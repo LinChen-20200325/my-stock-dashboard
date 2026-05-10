@@ -430,7 +430,86 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
     today = _dt.date.today()
     errs: list[str] = []
 
-    # ── 方案 0 (Primary): 國發會 NDC 景氣指標 API（鏡像現有 composite endpoint pattern）──
+    # ── 方案 0 (新 Primary v10.62.1): data.gov.tw dataset/6100 官方開放資料 ──
+    # 政府資料開放平臺「臺灣採購經理人指數」(提供機關：國發會 NDC)。
+    # 流程：① 試 metadata API 取 resources URL → ② 下載 CSV/JSON 解析末筆
+    # 失敗就 fallback 到既有方案 0~6。
+    try:
+        import io as _io_dgw
+        import csv as _csv_dgw
+        # metadata API 端點（多個變體：v1/v2 + .json + 直查 dataset id）
+        for _meta_url in (
+            'https://data.gov.tw/api/v2/rest/dataset/6100',
+            'https://data.gov.tw/api/v1/rest/dataset/6100',
+            'https://data.gov.tw/dataset/6100/resource',
+        ):
+            try:
+                _r_meta = fetch_url(_meta_url, timeout=10, attempts=1,
+                                    headers={'Accept': 'application/json'})
+                if _r_meta is None or _r_meta.status_code != 200:
+                    continue
+                try:
+                    _j_meta = _r_meta.json()
+                except Exception:
+                    continue
+                # 解析 resources：常見 shape `result.resources[]` / `resources[]`
+                _res = (_j_meta.get('result', {}).get('resources')
+                        or _j_meta.get('resources')
+                        or _j_meta.get('data', {}).get('resources')
+                        or [])
+                if not _res:
+                    continue
+                # 找 CSV / JSON resource
+                _csv_url = None
+                for _it in _res:
+                    _fmt = str(_it.get('format', '')).upper()
+                    _url2 = _it.get('url') or _it.get('resourceDownloadUrl')
+                    if _fmt in ('CSV', 'JSON') and _url2:
+                        _csv_url = _url2
+                        break
+                if not _csv_url:
+                    continue
+                # 下載 CSV / JSON
+                _r_csv = fetch_url(_csv_url, timeout=15, attempts=2)
+                if _r_csv is None or _r_csv.status_code != 200:
+                    continue
+                _txt_csv = _r_csv.content.decode('utf-8-sig', errors='ignore')
+                # CSV 路徑：解析最後一筆有效 row（含 PMI 欄位 + 年月）
+                if _csv_url.lower().endswith('.csv') or 'csv' in _csv_url.lower():
+                    _rdr = list(_csv_dgw.DictReader(_io_dgw.StringIO(_txt_csv)))
+                    if _rdr:
+                        # 找 PMI 欄位（常見 key：'PMI' / '製造業採購經理人指數' / '指數'）
+                        _row_last = _rdr[-1]
+                        _pmi_v = None; _pmi_d = None
+                        for _k, _v_cell in _row_last.items():
+                            _kl = str(_k)
+                            if any(_x in _kl for _x in ('PMI', '採購經理', '製造業')):
+                                try:
+                                    _val = float(str(_v_cell).strip())
+                                    if 30 <= _val <= 70:
+                                        _pmi_v = _val
+                                        break
+                                except (ValueError, TypeError):
+                                    pass
+                        # 找日期欄位
+                        for _k2, _v2 in _row_last.items():
+                            _m_d = _re.search(r'(20\d{2})[-/年]?(\d{1,2})', str(_v2))
+                            if _m_d:
+                                _pmi_d = f'{_m_d.group(1)}-{int(_m_d.group(2)):02d}-01'
+                                break
+                        if _pmi_v is not None and _pmi_d:
+                            print(f'[macro_core/TW-PMI/data.gov.tw] ✅ {_pmi_v} date={_pmi_d}')
+                            return {'value': _pmi_v, 'date': _pmi_d,
+                                    'label': '政府資料開放平臺 dataset/6100',
+                                    'source': 'data.gov.tw', 'is_proxy': True,
+                                    'series_id': 'dgtw-6100'}
+            except Exception as _e_dg:
+                errs.append(f'dgtw.{_meta_url[-15:]}:{type(_e_dg).__name__}')
+    except Exception as _e_dg_outer:
+        errs.append(f'dgtw_outer:{type(_e_dg_outer).__name__}')
+        print(f'[macro_core/TW-PMI/data.gov.tw] ❌ outer {_e_dg_outer}')
+
+    # ── 方案 0b (原 Primary): 國發會 NDC 景氣指標 API（鏡像現有 composite endpoint pattern）──
     # nas_server.py:218 已驗證 https://index.ndc.gov.tw/app/data/indicator/composite 走 JSON；
     # PMI 端點推測 /PMI 或 /pmi 或 /PMI/latest，多個 endpoint 變體 + 多 JSON shape parser
     # 都試一遍，attempts=1 走 lean path 不阻塞 macro pool 預算
@@ -612,8 +691,106 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
         errs.append(f'Cnyes:{type(e).__name__}')
         print(f'[macro_core/TW-PMI/Cnyes] ❌ {e}')
 
-    err_msg = ' | '.join(errs) or 'all 4 stages failed'
-    print(f'[macro_core/TW-PMI] ❌ 4 段備援全失敗：{err_msg}')
+    # ── 方案 5: FinMind TaiwanEconomicIndicator（v10.62.0 新增）──
+    # 抓 FinMind 官方總經指標 dataset，過濾「PMI」/「製造業」相關 series
+    try:
+        import os as _os_fm, requests as _rq_fm
+        _tok = _os_fm.environ.get('FINMIND_TOKEN')
+        if not _tok:
+            try:
+                import streamlit as _st_fm
+                _tok = (_st_fm.secrets or {}).get('FINMIND_TOKEN')
+            except Exception:
+                pass
+        if _tok:
+            _start = (today - _dt.timedelta(days=180)).strftime('%Y-%m-%d')
+            _r_fm = _rq_fm.get(
+                'https://api.finmindtrade.com/api/v4/data',
+                params={'dataset': 'TaiwanEconomicIndicator',
+                        'start_date': _start, 'token': _tok},
+                timeout=12)
+            if _r_fm.status_code == 200:
+                _j = _r_fm.json()
+                _data = _j.get('data') or []
+                # 篩出 name 含 PMI / 製造業採購 的 series，按 date 取最新
+                _pmi_rows = [d for d in _data
+                             if 'PMI' in str(d.get('name', '')) or '製造業' in str(d.get('name', ''))]
+                if _pmi_rows:
+                    _pmi_rows.sort(key=lambda x: str(x.get('date', '')), reverse=True)
+                    _top = _pmi_rows[0]
+                    _v = float(_top.get('value') or 0)
+                    _d_str = str(_top.get('date', ''))
+                    if 30 <= _v <= 70 and _d_str:
+                        print(f"[macro_core/TW-PMI/FinMind] ✅ {_v} date={_d_str} ({_top.get('name')})")
+                        return {'value': _v, 'date': _d_str[:10],
+                                'label': f"FinMind TaiwanEconomicIndicator ({_top.get('name')})",
+                                'source': 'FinMind', 'is_proxy': True,
+                                'series_id': 'finmind-tw-pmi'}
+        else:
+            errs.append('FinMind:無 token')
+    except Exception as e:
+        errs.append(f'FinMind:{type(e).__name__}')
+        print(f'[macro_core/TW-PMI/FinMind] ❌ {e}')
+
+    # ── 方案 6: CIER cid=8（PMI 專屬類別，非 cid=21 新聞稿）──
+    try:
+        from bs4 import BeautifulSoup
+        for cier_url in ('https://www.cier.edu.tw/news/list?cid=8',
+                         'https://www.cier.edu.tw/news/list?cid=8&page=1'):
+            r = fetch_url(cier_url, timeout=12, attempts=1)
+            if r is None:
+                continue
+            r.encoding = 'utf-8'
+            txt = BeautifulSoup(r.text, 'html.parser').get_text(' ', strip=True)
+            m = _re.search(
+                r'(20\d{2})\s*年\s*(\d{1,2})\s*月.{0,40}?'
+                r'PMI[^。]{0,30}?(\d{2}\.\d)',
+                txt)
+            if m:
+                yr, mo, v = m.group(1), int(m.group(2)), float(m.group(3))
+                if 30 <= v <= 70 and 1 <= mo <= 12:
+                    last_date = _dt.date(int(yr), mo, 1)
+                    if (today - last_date).days <= max_age_days:
+                        date = f'{yr}-{mo:02d}-01'
+                        print(f'[macro_core/TW-PMI/CIER-cid8] ✅ {v} date={date}')
+                        return {'value': v, 'date': date,
+                                'label': 'CIER 中華經濟研究院（PMI 專欄）',
+                                'source': 'CIER', 'is_proxy': False,
+                                'series_id': 'cier-pmi-cid8'}
+    except Exception as e:
+        errs.append(f'CIER-cid8:{type(e).__name__}')
+        print(f'[macro_core/TW-PMI/CIER-cid8] ❌ {e}')
+
+    # ── 方案 7: MoneyDJ 財經知識庫（搜尋頁，HTML 含 PMI 圖表 alt）──
+    try:
+        from bs4 import BeautifulSoup
+        mdj_url = ('https://www.moneydj.com/KMDJ/Search/SearchListNew.aspx'
+                   '?keyword=%E5%8F%B0%E7%81%A3PMI&type=knowledge')
+        r = fetch_url(mdj_url, timeout=12, attempts=1)
+        if r is not None:
+            r.encoding = 'utf-8'
+            txt = BeautifulSoup(r.text, 'html.parser').get_text(' ', strip=True)
+            m = _re.search(
+                r'(20\d{2})\s*年\s*(\d{1,2})\s*月.{0,40}?'
+                r'(?:台灣|TW)\s*(?:製造業)?[^。]{0,40}?PMI[^。]{0,30}?(\d{2}\.\d)',
+                txt)
+            if m:
+                yr, mo, v = m.group(1), int(m.group(2)), float(m.group(3))
+                if 30 <= v <= 70 and 1 <= mo <= 12:
+                    last_date = _dt.date(int(yr), mo, 1)
+                    if (today - last_date).days <= max_age_days:
+                        date = f'{yr}-{mo:02d}-01'
+                        print(f'[macro_core/TW-PMI/MoneyDJ] ✅ {v} date={date}')
+                        return {'value': v, 'date': date,
+                                'label': 'MoneyDJ 財經知識庫',
+                                'source': 'MoneyDJ', 'is_proxy': False,
+                                'series_id': 'mdj-tw-pmi'}
+    except Exception as e:
+        errs.append(f'MoneyDJ:{type(e).__name__}')
+        print(f'[macro_core/TW-PMI/MoneyDJ] ❌ {e}')
+
+    err_msg = ' | '.join(errs) or 'all 8 stages failed'
+    print(f'[macro_core/TW-PMI] ❌ 8 段備援全失敗：{err_msg}')
     return {'_err_pmi': err_msg, 'value': None}
 
 

@@ -1162,14 +1162,17 @@ def render_etf_single(gemini_fn=None):
     _plot_etf_chart(df, ticker, benchmark, bench_df)
 
     # ── 存入 session_state 供 Tab⑨ 使用 ─────────────────────
-    # 真失敗時補上 _err_* 訊息，供診斷頁 inline 顯示根因
-    _err_expense = (
+    # 海外 ETF 偵測：ticker 非 4-6 碼台灣代號（如 VOO/SCHD/QQQ）→ 本系統 NAV/費用率
+    # 5 源僅限台灣 ETF（SITCA / FinMind / TWSE / goodinfo / MoneyDJ），標 ⚪ 非異常
+    import re as _re_etf
+    _is_overseas = not bool(_re_etf.match(r'^\d{4,6}\.(TW|TWO)$', ticker))
+    _err_expense = None if (expense or _is_overseas) else (
         'SITCA 未收錄此 ETF + yfinance.info[expenseRatio] 為空'
-        '（海外 ETF / 私募 / 已下市可能）'
-    ) if not expense else None
-    _err_nav = (
+        '（私募 / 已下市可能）'
+    )
+    _err_nav = None if ((prem or {}).get('nav') is not None or _is_overseas) else (
         'FinMind ETF NAV + goodinfo + TWSE OpenAPI + MoneyDJ + yfinance 5 源全失敗'
-    ) if (prem or {}).get('nav') is None else None
+    )
     st.session_state['etf_single_data'] = {
         'ticker': ticker, 'name': etf_name,
         'cur_yield': cur_yield, 'avg_yield': avg_yield,
@@ -1179,6 +1182,7 @@ def render_etf_single(gemini_fn=None):
         'expense': expense, 'beta': beta, 'aum': aum,
         'k_val': _kv_ai, 'd_val': _dv_ai,
         'bias240': _bias240_ai,
+        '_is_overseas': _is_overseas,
         '_err_expense': _err_expense,
         '_err_nav':     _err_nav,
     }
@@ -3627,8 +3631,9 @@ def render_data_health_raw():
                  '端點': endpoint or '—', 'Proxy': _px}
         # ── probe_status 優先：分辨 N/A vs zero vs fail ─────────────
         if probe_status == 'na':
-            return {**_base, '最後更新': '⚪ 此股無此科目',
-                    '日期': '—', '狀態': '⚪'}
+            # error_msg 帶自訂 N/A 說明（海外 ETF / 此股無此科目 等情境）
+            _na_lbl = f'⚪ {str(error_msg)[:55]}' if error_msg else '⚪ 此股無此科目'
+            return {**_base, '最後更新': _na_lbl, '日期': '—', '狀態': '⚪'}
         if probe_status == 'zero':
             return {**_base, '最後更新': '🔵 該股本期為 0',
                     '日期': '—', '狀態': '🔵'}
@@ -3942,7 +3947,8 @@ def render_data_health_raw():
             ('美國核心 CPI YoY',       'us_core_cpi', 'monthly', '_err_cpi',
              'FRED',                          'CPILFESL',                            True),
             ('🇹🇼 台灣製造業 PMI',     'ism_pmi',     'monthly', '_err_pmi',
-             'CIER+MacroMicro+StockFeel+鉅亨 4段', 'cier.edu.tw / charts/22 / stockfeel / cnyes', True),
+             'data.gov.tw+NDC+MacroMicro+CIER+StockFeel+鉅亨+FinMind+MoneyDJ 8段',
+             'data.gov.tw/dataset/6100 / index.ndc / charts/22 / cier / stockfeel / cnyes / FinMind / MoneyDJ', True),
             ('NDC 景氣燈號分數',        'ndc_signal',  'monthly', '_err_ndc',
              'StockFeel+MacroMicro 雙源',     'stockfeel/biz-light + charts/2',      True),
             ('台灣出口 YoY',           'tw_export',   'monthly', '_err_export',
@@ -3963,7 +3969,10 @@ def render_data_health_raw():
                     err = (f'抓取失敗（{_ma_loaded_at}）｜全部 5 段備援均無回應；'
                            f'通常是 Streamlit Cloud 海外 IP 對台灣源限制')
                 else:
-                    err = _ma.get(err_key) or '抓取結果無 date/period 欄位'
+                    # 三層 fallback：err_key → _all_failed → 「key 缺失但其他來源已抓」
+                    err = (_ma.get(err_key)
+                           or f'此來源回傳缺 date/period（已抓 {_ma_loaded_at}），其他總經 keys 正常；'
+                              f'多半是 HTML 結構改版或 proxy 對單站 block')
                 rows.append(_row(label, None, freq,
                                  error_msg=err, source=src, endpoint=ep, proxy=px))
             else:
@@ -4342,19 +4351,25 @@ def render_data_health_raw():
                              str(_dt_r.date.today()) if _e1.get('beta') is not None else None,
                              'daily',
                              source='yfinance', endpoint='.info[beta]', proxy=False))
+            _is_oversea_etf = bool(_e1.get('_is_overseas'))
+            _oversea_msg = '海外 ETF 不適用（本系統 5 源僅限台灣 ETF）'
+            _exp_na = _is_oversea_etf and not _e1.get('expense')
             rows.append(_row('ETF 費用率',
                              str(_dt_r.date.today()) if _e1.get('expense') else None, 'daily',
                              optional=False,
-                             error_msg=_e1.get('_err_expense'),
+                             error_msg=(_oversea_msg if _exp_na else _e1.get('_err_expense')),
+                             probe_status=('na' if _exp_na else None),
                              source='SITCA + yfinance 雙源',
                              endpoint='sitca.org.tw IN2222_01 / .info[expenseRatio]',
                              proxy=True))
             # NAV 淨值
             _prem = _e1.get('premium') or {}
             _nav_ok = _prem.get('nav') is not None
+            _nav_na = _is_oversea_etf and not _nav_ok
             rows.append(_row('NAV 淨值',
                              str(_dt_r.date.today()) if _nav_ok else None, 'daily',
-                             error_msg=_e1.get('_err_nav'),
+                             error_msg=(_oversea_msg if _nav_na else _e1.get('_err_nav')),
+                             probe_status=('na' if _nav_na else None),
                              source='FinMind / TWSE OpenAPI',
                              endpoint='TaiwanETFNetAssetValue / opendata',
                              proxy=True))
