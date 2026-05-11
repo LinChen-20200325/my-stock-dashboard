@@ -715,11 +715,20 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 4) -> "pd.Data
 def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> dict:
     """折溢價率 = (市價 - 淨值) / 淨值 × 100
     核心原則：NAV 與市價必須來自同一日，避免跨來源日期錯位。
+    主動式 ETF（代號末碼字母 e.g. 00980A）NAV 公布常 T+1 延遲，加雙守門員：
+      G1：NAV 最新日 vs 市價最新日相差 ≥1 交易日 → stale，回傳 N/A
+      G2：主動式 ETF |prem| > 2.0% → 疑 NAV 同日寫入但數值未更新 → 回傳 N/A
     資料來源：1. TWSE OpenAPI 直讀（同日 NAV+市價+折溢價率）
               2. FinMind NAV history + df 同日 inner join（精確日期配對）
               3. yfinance info navPrice
     """
     import pandas as _pd_prem
+    import re as _re_prem
+    _code_clean = ticker.replace('.TW', '').replace('.TWO', '') if ticker else ''
+    _is_active_etf = bool(_re_prem.match(r'^\d{4,5}[A-Z]$', _code_clean))
+    _ACTIVE_PREM_MAX = 2.0  # 主動式 ETF |prem| 門檻，超過判定 NAV stale
+    _stale_payload = {'nav': None, 'price': None, 'premium_pct': None,
+                      'warning': False, 'stale_nav': True}
     try:
         if ticker:
             _nav_hist = fetch_etf_nav_history(ticker, days=10)
@@ -732,6 +741,9 @@ def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> d
                     _price_val = _last.get('price', None)
                     if _prem_val is not None and not _pd_prem.isna(_prem_val):
                         _pv = float(_prem_val)
+                        if _is_active_etf and abs(_pv) > _ACTIVE_PREM_MAX:
+                            print(f'[折溢價-A/stale] {ticker}: prem={_pv}% > ±{_ACTIVE_PREM_MAX}%')
+                            return _stale_payload
                         _latest_nav = float(_last['nav'])
                         _pr = float(_price_val) if _price_val else (_latest_nav * (1 + _pv / 100))
                         print(f'[折溢價-A] {ticker}: nav={_latest_nav} prem={_pv}% (TWSE直讀)')
@@ -748,11 +760,20 @@ def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> d
                     _price_s.index = _pd_prem.to_datetime(_price_s.index).normalize()
                     _merged = _nav_df.join(_price_s, how='inner').dropna()
                     if not _merged.empty:
+                        _nav_date_used = _merged.index[-1]
+                        _price_latest = _price_s.index.max()
+                        _gap_days = (_price_latest - _nav_date_used).days
+                        if _gap_days >= 1:
+                            print(f'[折溢價-B/stale] {ticker}: NAV={_nav_date_used.date()} 落後 {_gap_days}d')
+                            return _stale_payload
                         _row = _merged.iloc[-1]  # 最近一筆同日配對
                         _nav_v = float(_row['nav'])
                         _pr_v  = float(_row['Close'])
                         _prem  = round((_pr_v - _nav_v) / _nav_v * 100, 2)
-                        print(f'[折溢價-B] {ticker}: date={_merged.index[-1].date()} nav={_nav_v} price={_pr_v} prem={_prem}%')
+                        if _is_active_etf and abs(_prem) > _ACTIVE_PREM_MAX:
+                            print(f'[折溢價-B/stale] {ticker}: prem={_prem}% > ±{_ACTIVE_PREM_MAX}%')
+                            return _stale_payload
+                        print(f'[折溢價-B] {ticker}: date={_nav_date_used.date()} nav={_nav_v} price={_pr_v} prem={_prem}%')
                         return {'nav': _nav_v, 'price': _pr_v,
                                 'premium_pct': _prem, 'warning': _prem > 1.0}
 
@@ -1217,6 +1238,10 @@ def render_etf_single(gemini_fn=None):
             _prem_color  = '#f85149'
             _prem_action = '🔴 嚴禁追高'
             _prem_reason = f'溢價 {_pct:.2f}%，嚴重高溢價，等待折價或換標的'
+    elif prem.get('stale_nav'):
+        _prem_color  = '#8b949e'
+        _prem_action = '⏳ NAV 資料延遲'
+        _prem_reason = '主動式 ETF NAV 公布 T+1 延遲（或同日寫入但值未更新），暫不顯示折溢價以免誤判'
     else:
         _prem_color  = '#8b949e'
         _prem_action = 'ℹ️ 無 NAV 資料'
