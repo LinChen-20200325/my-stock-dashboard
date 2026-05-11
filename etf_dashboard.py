@@ -95,23 +95,31 @@ _TW_ETF_LAUNCH_PRICE = {
 
 @st.cache_data(ttl=900, max_entries=50, show_spinner=False)
 def _compute_etf_warroom_row(ticker: str, name: str, role: str) -> dict:
-    """ETF 追蹤戰情室單列健檢計算（MK 規格 5 項綜合燈號）。
+    """ETF 追蹤戰情室單列健檢計算（核心/衛星依 role 分流燈號邏輯）。
 
-    回傳欄位（對應 column_config）：
+    核心資產（穩領息）燈號 → 「健康燈號」欄位：
+        🔴 賺息賠本（總報酬 < 殖利率）→ 考慮換股
+        🟡 趨勢轉弱（跌破 MA60）
+        🟢 體質健康（總報酬 ≥ 殖利率 且 站上 MA60）
+        其他附帶警示：條件 B 破發 / 條件 C 溢價>1% 加註於燈號文字
+
+    衛星資產（賺價差，跌了就買 σ 分級）燈號 → 「σ位階」欄位：
+        🟢🟢🟢 股災價（< MA20-3σ）→ 大買 50%
+        🟢🟢   超跌價（< MA20-2σ）→ 買 30%
+        🟢     便宜價（< MA20-1σ）→ 小買 20%
+        ⚪     中性區（MA20-1σ ~ MA20+1.5σ）
+        🟠     偏高（≥ MA20+1.5σ）→ 不追高
+        🔴     準備停利（≥ MA20+2σ）
+
+    回傳欄位：
         代號 / 名稱 / 類型 / 市價 / 折溢價% / 年化配息率% / 1年含息報酬% /
-        距季線% / 走勢（30日 close list）/ 健康燈號
-
-    MK 規格 5 項燈號彙整：
-        🔴 任一觸發：條件 A 吃本金 / 條件 B 破發 / 條件 C 溢價>1%
-        🟢 跌破月線/季線 → 撿便宜訊號
-        🟡 死亡交叉 / 中性
-        ⚪ 資料不足
+        距月線% / 距季線% / σ位階 / 走勢（30日）/ 健康燈號 / 動作建議
     """
     _empty = {
         '代號': ticker, '名稱': name, '類型': role,
         '市價': None, '折溢價%': None, '年化配息率%': None,
-        '1年含息報酬%': None, '距季線%': None,
-        '走勢': [], '健康燈號': '⚪ 資料不足',
+        '1年含息報酬%': None, '距月線%': None, '距季線%': None,
+        'σ位階': None, '走勢': [], '健康燈號': '⚪ 資料不足', '動作建議': '—',
     }
     try:
         df = fetch_etf_price(ticker, period='1y')
@@ -125,49 +133,91 @@ def _compute_etf_warroom_row(ticker: str, name: str, role: str) -> dict:
         _yld = calc_current_yield(df, divs)
         _prem = calc_premium_discount(info, df, ticker)
         _prem_pct = _prem.get('premium_pct') if isinstance(_prem, dict) else None
-        # 距季線乖離率
-        _bias60 = None
-        if len(df) >= 60:
-            _ma60v = float(df['Close'].rolling(60).mean().iloc[-1])
-            if _ma60v > 0:
-                _bias60 = round((_cur - _ma60v) / _ma60v * 100, 2)
+
+        # 均線 & 乖離
+        _ma20v = float(df['Close'].rolling(20).mean().iloc[-1]) if len(df) >= 20 else None
+        _ma60v = float(df['Close'].rolling(60).mean().iloc[-1]) if len(df) >= 60 else None
+        _bias20 = round((_cur - _ma20v) / _ma20v * 100, 2) if (_ma20v and _ma20v > 0) else None
+        _bias60 = round((_cur - _ma60v) / _ma60v * 100, 2) if (_ma60v and _ma60v > 0) else None
+
+        # MA20 ± σ（衛星「跌了就買」分級）：用近 1 年 daily close 的標準差
+        _sigma_label, _sigma_action, _sigma_emoji = None, None, None
+        if _ma20v is not None and len(df) >= 60:
+            _std = float(df['Close'].tail(252).std())  # 近 1 年 daily std
+            if _std > 0:
+                _lo3 = _ma20v - 3 * _std
+                _lo2 = _ma20v - 2 * _std
+                _lo1 = _ma20v - 1 * _std
+                _hi15 = _ma20v + 1.5 * _std
+                _hi2 = _ma20v + 2 * _std
+                if _cur < _lo3:
+                    _sigma_emoji, _sigma_label, _sigma_action = '🟢🟢🟢', '股災價(<-3σ)', '大買 50%'
+                elif _cur < _lo2:
+                    _sigma_emoji, _sigma_label, _sigma_action = '🟢🟢', '超跌價(<-2σ)', '買 30%'
+                elif _cur < _lo1:
+                    _sigma_emoji, _sigma_label, _sigma_action = '🟢', '便宜價(<-1σ)', '小買 20%'
+                elif _cur >= _hi2:
+                    _sigma_emoji, _sigma_label, _sigma_action = '🔴', '準備停利(≥+2σ)', '分批停利'
+                elif _cur >= _hi15:
+                    _sigma_emoji, _sigma_label, _sigma_action = '🟠', '偏高(≥+1.5σ)', '不追高/減碼'
+                else:
+                    _sigma_emoji, _sigma_label, _sigma_action = '⚪', '中性區(±1σ)', '靜待訊號'
+
         # 30 日 sparkline
         _spark = [float(x) for x in df['Close'].tail(30).tolist()]
 
-        # ── MK 規格 5 項燈號彙整 ────────────────────────────────
-        _warns, _goods = [], []
-        # 條件 A：吃本金（總報酬 < 殖利率）
-        if _yld and _yld > 0 and _ttl < _yld:
-            _warns.append(f'A 吃本金({_ttl:.1f}<{_yld:.1f})')
-        # 條件 B：破發
-        _lp = _get_etf_launch_price(ticker, df)
-        if _lp and _cur < _lp:
-            _warns.append(f'B 破發({_cur:.1f}<{_lp:.1f})')
-        # 條件 C：溢價 > 1%（紅燈）/ 折價（綠燈）
-        if _prem_pct is not None:
-            if _prem_pct > 1:
-                _warns.append(f'C 溢價過高({_prem_pct:+.2f}%)')
-            elif _prem_pct < 0:
-                _goods.append(f'折價撿便宜({_prem_pct:+.2f}%)')
-        # 跌了就買：跌破月線/季線
-        if len(df) >= 60:
-            _ma20v = float(df['Close'].rolling(20).mean().iloc[-1])
-            _ma60vv = float(df['Close'].rolling(60).mean().iloc[-1])
-            if _cur < _ma60vv:
-                _goods.append('跌破季線(波段大買點)')
-            elif _cur < _ma20v:
-                _goods.append('跌破月線(短線小買點)')
-            # 死亡交叉
-            if _ma20v < _ma60vv:
-                _warns.append('死叉(MA20<MA60)')
+        # ── 燈號分流：核心 vs 衛星 ──────────────────────────────
+        _is_core = (role == '核心')
+        _is_sat = (role == '衛星')
 
-        # 燈號決議：紅燈優先 → 綠燈 → 黃燈中性
-        if _warns:
-            _lamp = '🔴 ' + ' ｜ '.join(_warns)
-        elif _goods:
-            _lamp = '🟢 ' + ' ｜ '.join(_goods)
+        if _is_core:
+            # 核心：總報酬 vs 殖利率 + MA60 趨勢
+            _below_ma60 = (_ma60v is not None and _cur < _ma60v)
+            _has_yld = _yld and _yld > 0
+            _extra = []
+            # 條件 B 破發
+            _lp = _get_etf_launch_price(ticker, df)
+            if _lp and _cur < _lp:
+                _extra.append(f'破發(<{_lp:.1f})')
+            # 條件 C 溢價
+            if _prem_pct is not None and _prem_pct > 1:
+                _extra.append(f'溢價過高({_prem_pct:+.2f}%)')
+            elif _prem_pct is not None and _prem_pct < 0:
+                _extra.append(f'折價({_prem_pct:+.2f}%)')
+
+            if _has_yld and _ttl < _yld:
+                _lamp = f'🔴 賺息賠本({_ttl:.1f}%<{_yld:.1f}%)→考慮換股'
+                _action_hint = '考慮換股（核心紀律不容侵蝕本金）'
+            elif _below_ma60:
+                _lamp = f'🟡 趨勢轉弱（跌破 MA60 {_ma60v:.2f}）'
+                _action_hint = '觀察均線止跌；不加碼'
+            elif _has_yld:
+                _lamp = f'🟢 體質健康（{_ttl:.1f}% ≥ {_yld:.1f}%）'
+                _action_hint = '正常續抱領息'
+            else:
+                _lamp = '🟡 中性持有（無配息資料）'
+                _action_hint = '觀察'
+            if _extra:
+                _lamp += ' ｜ ' + ' / '.join(_extra)
+
+        elif _is_sat:
+            # 衛星：直接拿 σ 位階當燈號
+            if _sigma_emoji:
+                _lamp = f'{_sigma_emoji} {_sigma_label}'
+                _action_hint = _sigma_action or '—'
+            else:
+                _lamp = '⚪ σ 資料不足'
+                _action_hint = '—'
+
         else:
-            _lamp = '🟡 中性持有'
+            # 其他角色：保留舊邏輯精簡版
+            _warns = []
+            if _yld and _yld > 0 and _ttl < _yld:
+                _warns.append('賺息賠本')
+            if _prem_pct is not None and _prem_pct > 1:
+                _warns.append(f'溢價{_prem_pct:+.2f}%')
+            _lamp = ('🔴 ' + ' ｜ '.join(_warns)) if _warns else '🟡 中性持有'
+            _action_hint = '—'
 
         return {
             '代號': ticker, '名稱': name, '類型': role,
@@ -175,9 +225,12 @@ def _compute_etf_warroom_row(ticker: str, name: str, role: str) -> dict:
             '折溢價%': (round(_prem_pct, 2) if _prem_pct is not None else None),
             '年化配息率%': (round(_yld, 2) if _yld else None),
             '1年含息報酬%': round(_ttl, 2),
+            '距月線%': _bias20,
             '距季線%': _bias60,
+            'σ位階': (f'{_sigma_emoji} {_sigma_label}' if _sigma_emoji else None),
             '走勢': _spark,
             '健康燈號': _lamp,
+            '動作建議': _action_hint,
         }
     except Exception as e:
         print(f'[warroom/{ticker}] {type(e).__name__}: {e}')
@@ -1678,27 +1731,58 @@ def render_etf_portfolio(gemini_fn=None):
     } for r in rows])
     st.dataframe(overview_df, use_container_width=True, hide_index=True)
 
-    # ── 🛰️ ETF 追蹤戰情室（MK 規格綜合健檢表 + Sparkline）─────
-    st.markdown('#### 🛰️ ETF 追蹤戰情室（綜合健檢一覽）')
-    st.caption('💡 一張表看完所有持倉的 **MK 規格五項燈號**：吃本金 / 破發 / 折溢價 / 跌了就買 / 死亡交叉')
+    # ── 🛰️ ETF 追蹤戰情室（核心/衛星分流燈號 + Sparkline）─────
+    st.markdown('#### 🛰️ ETF 追蹤戰情室（核衛分流健檢）')
+    st.caption('💡 **核心**看「總報酬 vs 殖利率 + MA60 趨勢」；**衛星**看「MA20 ± σ 五階分級買賣點」')
     with st.spinner('批次計算 ETF 健檢指標...'):
         _war_rows = [_compute_etf_warroom_row(r['ticker'], _etf_name(r['ticker']),
                                               r.get('role', '—'))
                      for r in rows]
 
-    _war_cols = {
-        '代號':       st.column_config.TextColumn('代號', width='small'),
-        '名稱':       st.column_config.TextColumn('名稱', width='medium'),
-        '市價':       st.column_config.NumberColumn('市價', format='%.2f'),
-        '折溢價%':    st.column_config.NumberColumn('折溢價%', format='%+.2f%%',
-                        help='> +1% 紅燈追高；< 0% 綠燈撿便宜（MK 規格條件 C）'),
-        '年化配息率%': st.column_config.NumberColumn('年化配息率%', format='%.2f%%'),
+    # 核心戰情室 column_config
+    _core_cols = {
+        '代號':         st.column_config.TextColumn('代號', width='small'),
+        '名稱':         st.column_config.TextColumn('名稱', width='medium'),
+        '市價':         st.column_config.NumberColumn('市價', format='%.2f'),
+        '折溢價%':      st.column_config.NumberColumn('折溢價%', format='%+.2f%%',
+                          help='> +1% 追高；< 0% 折價撿便宜（MK 條件 C）'),
+        '年化配息率%':  st.column_config.NumberColumn('年化配息率%', format='%.2f%%'),
+        '1年含息報酬%': st.column_config.NumberColumn('1年含息報酬%', format='%+.2f%%',
+                          help='含息總報酬，與年化配息率比較'),
+        '距季線%':      st.column_config.NumberColumn('距 MA60%', format='%+.2f%%',
+                          help='負值=跌破季線 → 🟡 趨勢轉弱'),
+        '走勢':         st.column_config.LineChartColumn('近30日走勢'),
+        '健康燈號':     st.column_config.TextColumn('體質燈號', width='large',
+                          help='🟢 體質健康 / 🔴 賺息賠本 / 🟡 趨勢轉弱'),
+        '動作建議':     st.column_config.TextColumn('動作建議', width='medium'),
+    }
+
+    # 衛星戰情室 column_config：突顯 σ 位階 + 加碼比例
+    _sat_cols = {
+        '代號':         st.column_config.TextColumn('代號', width='small'),
+        '名稱':         st.column_config.TextColumn('名稱', width='medium'),
+        '市價':         st.column_config.NumberColumn('市價', format='%.2f'),
+        '距月線%':      st.column_config.NumberColumn('距 MA20%', format='%+.2f%%',
+                          help='相對月線乖離；σ 分級的基準'),
+        'σ位階':        st.column_config.TextColumn('σ 位階', width='medium',
+                          help='-3σ 股災 / -2σ 超跌 / -1σ 便宜 / +2σ 停利'),
         '1年含息報酬%': st.column_config.NumberColumn('1年含息報酬%', format='%+.2f%%'),
-        '距季線%':    st.column_config.NumberColumn('距季線%', format='%+.2f%%',
-                        help='負值=跌破季線（MK 規格波段大買點 🟢🟢）'),
-        '走勢':       st.column_config.LineChartColumn('近30日走勢', y_min=None, y_max=None),
-        '健康燈號':   st.column_config.TextColumn('綜合燈號', width='medium',
-                        help='MK 規格 5 項全綠才亮 🟢；任一紅燈警訊→🔴'),
+        '走勢':         st.column_config.LineChartColumn('近30日走勢'),
+        '健康燈號':     st.column_config.TextColumn('σ 燈號', width='medium',
+                          help='🟢🟢🟢 大買 50% / 🟢🟢 買 30% / 🟢 小買 20% / 🔴 停利'),
+        '動作建議':     st.column_config.TextColumn('動作建議', width='medium',
+                          help='依 σ 位階自動推導加碼/停利比例'),
+    }
+
+    # 其他角色簡表
+    _other_cols = {
+        '代號':         st.column_config.TextColumn('代號', width='small'),
+        '名稱':         st.column_config.TextColumn('名稱', width='medium'),
+        '市價':         st.column_config.NumberColumn('市價', format='%.2f'),
+        '年化配息率%':  st.column_config.NumberColumn('年化配息率%', format='%.2f%%'),
+        '1年含息報酬%': st.column_config.NumberColumn('1年含息報酬%', format='%+.2f%%'),
+        '走勢':         st.column_config.LineChartColumn('近30日走勢'),
+        '健康燈號':     st.column_config.TextColumn('燈號', width='medium'),
     }
 
     # ── 核心資產戰情室（佔比 80%）────────────────────────────
@@ -1707,19 +1791,30 @@ def render_etf_portfolio(gemini_fn=None):
     _other_rows = [w for w in _war_rows if w.get('類型') not in ('核心', '衛星')]
 
     if _core_rows:
-        st.markdown('##### 🏛️ 核心資產戰情室（目標 80%）— 高股息 / 大型 / 債券 ETF')
-        st.caption('首重「**配息是否吃本金**」與「**折溢價**」— 條件 A/B/C 全綠才合格')
-        st.dataframe(pd.DataFrame(_core_rows).drop(columns=['類型']),
-                     column_config=_war_cols, use_container_width=True, hide_index=True)
+        st.markdown('##### 🏛️ 核心資產戰情室（目標 80%）— 穩領息')
+        st.caption('🔴 賺息賠本（總報酬<殖利率）→ 換股 ｜ 🟡 跌破 MA60 → 趨勢轉弱 ｜ 🟢 體質健康（雙條件全綠）')
+        _core_df = pd.DataFrame(_core_rows)[
+            ['代號', '名稱', '市價', '折溢價%', '年化配息率%',
+             '1年含息報酬%', '距季線%', '走勢', '健康燈號', '動作建議']
+        ]
+        st.dataframe(_core_df, column_config=_core_cols,
+                     use_container_width=True, hide_index=True)
     if _sat_rows:
-        st.markdown('##### 🚀 衛星資產戰情室（目標 20%）— AI / 半導體 / 主題成長')
-        st.caption('首重「**動能趨勢**」與「**均線買賣點**」— 跌破月線/季線才出手')
-        st.dataframe(pd.DataFrame(_sat_rows).drop(columns=['類型']),
-                     column_config=_war_cols, use_container_width=True, hide_index=True)
+        st.markdown('##### 🚀 衛星資產戰情室（目標 20%）— 跌了就買 σ 分級')
+        st.caption('🟢🟢🟢 < MA20-3σ 股災價(大買 50%) ｜ 🟢🟢 < -2σ 超跌(30%) ｜ 🟢 < -1σ 便宜(20%) ｜ 🔴 ≥ +2σ 停利')
+        _sat_df = pd.DataFrame(_sat_rows)[
+            ['代號', '名稱', '市價', '距月線%', 'σ位階',
+             '1年含息報酬%', '走勢', '健康燈號', '動作建議']
+        ]
+        st.dataframe(_sat_df, column_config=_sat_cols,
+                     use_container_width=True, hide_index=True)
     if _other_rows:
-        st.markdown('##### 📦 其他持倉')
-        st.dataframe(pd.DataFrame(_other_rows).drop(columns=['類型']),
-                     column_config=_war_cols, use_container_width=True, hide_index=True)
+        st.markdown('##### 📦 其他持倉（未分類）')
+        _oth_df = pd.DataFrame(_other_rows)[
+            ['代號', '名稱', '市價', '年化配息率%', '1年含息報酬%', '走勢', '健康燈號']
+        ]
+        st.dataframe(_oth_df, column_config=_other_cols,
+                     use_container_width=True, hide_index=True)
 
     # ── MK 框架 #9：核心 / 衛星比例 vs regime 目標 ────────────
     _core_value = sum(r['current_value'] for r in rows if r.get('role') == '核心')
