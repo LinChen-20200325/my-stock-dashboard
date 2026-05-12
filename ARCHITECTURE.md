@@ -1097,5 +1097,21 @@ ETF 回測子頁（render_etf_backtest）額外流程：
 | 原則 | 只顯示「從網路 API 直接抓取的第一手原始資料」；嚴禁均線 / RSI / 乖離率 / AI 評分等任何計算值 |
 | 欄位 | `資料名稱 / 最後更新 / 狀態燈號（🟢🟡🔴⚪🔵）`|
 | 呼叫端 | `app.py:9055 render_data_health_raw()` |
+| **PMI 診斷** | 當「🇹🇼 台灣製造業 PMI」進入「資料異常清單」時，自動於下方加 `🔬 8 段備援源詳細診斷` expander；按鈕觸發 `macro_core.diagnose_tw_pmi_sources()` 逐源探測，輸出 {method, status (✅/⚠️/❌/⚪), detail, url} 表格（PR #53）|
+
+---
+
+**`diagnose_tw_pmi_sources()`**（PMI 8 段備援源診斷工具 — PR #53）
+
+| 項目 | 說明 |
+|------|------|
+| 位置 | `macro_core.py`（緊接 `fetch_tw_pmi` 之後）|
+| 用途 | 當 `fetch_tw_pmi` 全失敗時，**純讀**探測 8 段備援源 HTTP / proxy / JSON shape，定位是哪段真死、哪段被 proxy 截掉、哪段網站改版（regex 過時）|
+| 輸入 | 無 |
+| 輸出 | `list[dict]` — 每筆 `{method, status, detail, url}` |
+| 狀態語意 | `✅` 端點 OK 且關鍵欄位存在 ｜ `⚠️` HTTP 200 但內容形狀變了 ｜ `❌` HTTP 非 200 / fetch_url 回 None / 例外 ｜ `⚪` 跳過（無 token 等） |
+| 探測源 | ① data.gov.tw ② NDC ③ MacroMicro ④ CIER cid=21 ⑤ StockFeel ⑥ 鉅亨網 ⑦ FinMind（需 token）⑧ MoneyDJ |
+| 設計原則 | **不改 `fetch_tw_pmi`**（零 regression）；**lazy 載入**（只在使用者點按鈕才探測）；timeout=8s × 8 段 worst case ≤ 1 分鐘 |
+| 呼叫端 | `health_inspector.py` 異常清單 expander 內按鈕觸發 |
 
 ---
