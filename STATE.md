@@ -13,6 +13,7 @@
 | **資料抓取** | `data_loader.py` · `macro_core.py` · `tw_macro.py` · `daily_checklist.py` · `leading_indicators.py` · `tw_stock_data_fetcher.py` |
 | **資料註冊** | `data_registry.py` · `data_config.py` · `config.py` |
 | **引擎** | `scoring_engine.py` · `financial_health_engine.py` · `market_strategy.py` · `risk_control.py` · `backtest_engine.py` · `unified_decision.py` · `v4_strategy_engine.py` · `v5_modules.py` · `yield_screener.py` |
+| **ETF 工具鏈** | `etf_categories.py`（同儕分類）· `merrill_clock.py`（景氣循環）· `grape_ladder.py`（月配組合最佳化）· `etf_quality.py`（4 因子品質評等） |
 | **AI / 警示** | `ai_engine.py` · `macro_alert.py` · `macro_state_locker.py` · `persona.py` |
 | **基建** | `proxy_helper.py`（NAS proxy + Storm Shield 快取）· `nas_server.py`（FastAPI 中繼）· `chart_plotter.py` · `portfolio_manager.py` · `stock_names.py` |
 
@@ -21,5 +22,22 @@
 - 設計文件：`ARCHITECTURE.md` · `DATASTATION.md` · `STRATEGY_MANUAL.md`
 - 測試：`test_*.py`
 
+## 🚀 最近完工（PR #42-#48，2026-05）
+| PR | 任務 | SHA |
+|---|---|---|
+| #42 | ETF 折溢價 G1+G2 守門員（NAV-Price gap + 主動式 ETF 異常閾值） | c21e577 |
+| #43 | ETF 折溢價 G3 守門員 + data_date 透明化 | a5ff133 |
+| #44 | ETF 費用率加 MoneyDJ 第 3 源 + PMI 標籤對齊 8 段 | dfbff76 |
+| #45 | ETF 同儕近 3M/6M/1Y 排名（總報酬率含息） | bb6337e |
+| #46 | 美林時鐘景氣循環圖（PMI YoY × CPI YoY） | cdfd4a8 |
+| #47 | 葡萄串領息法（高股息 ETF 月配組合最佳化） | 87edcd1 |
+| #48 | ETF 自製品質評等（4 因子合成 1-5 顆星） | b848816 |
+
+## 🎯 Backlog
+- **環境工**：5 條 stale remote branches 清理（sandbox token 無 delete 權）
+- **部署驗證**：PR #42-#48 累積 Streamlit Cloud 上線驗收項目
+- **技術債**：`etf_dashboard.py` 4906+ 行可拆檔；`app.py` ruff 682 baseline errors
+
 ## 🧱 開發協議
 依 `CLAUDE.md` v2.0 核心協議運行（§1-§5 嚴格三步法 / 防幻覺 / 精準讀寫 / 鋼鐵自省 / 卡關救援）。
+
