@@ -80,18 +80,41 @@ def recommend_income_ladder(
     max_etfs: int = 4,
     min_etfs: int = 1,
     exclude_monthly: bool = False,
+    min_stars: int = 1,
 ) -> dict:
     """暴力 itertools.combinations 搜尋最佳組合。
+
+    Parameters
+    ----------
+    min_stars : int
+        最低品質星等過濾門檻（1-5）。1 = 不過濾，3+ 用 etf_quality 預先剔除。
 
     Returns
     -------
     dict
       best_combo, covered_months, missing_months, coverage_pct,
-      month_map, all_candidates_evaluated, skipped_tickers, alternatives
+      month_map, all_candidates_evaluated, skipped_tickers, low_quality, alternatives
     """
     _cands = list(candidates) if candidates else list(ETF_PEER_GROUPS.get('高股息', []))
     if exclude_monthly:
         _cands = [t for t in _cands if t not in _MONTHLY_ETFS]
+    # 品質星等過濾（min_stars >= 2 才啟動，避免 1=不過濾時白抓）
+    _low_quality: list[str] = []
+    if min_stars >= 2:
+        try:
+            from etf_quality import compute_etf_quality
+            _filtered: list[str] = []
+            for _t in _cands:
+                _q = compute_etf_quality(_t)
+                _s = _q.get('stars') if _q else None
+                if _s is None or _s >= min_stars:
+                    # 未評等者保留（避免資料缺漏誤殺）
+                    _filtered.append(_t)
+                else:
+                    _low_quality.append(_t)
+            _cands = _filtered
+        except Exception as _e_q:
+            print(f'[grape_ladder/min_stars] ❌ {type(_e_q).__name__}: {_e_q}')
     # 抓每檔配息月份；空 set 視為無資料
     _month_map: dict[str, set[int]] = {}
     _skipped: list[str] = []
@@ -106,7 +129,8 @@ def recommend_income_ladder(
         return {
             'best_combo': [], 'covered_months': set(), 'missing_months': set(range(1, 13)),
             'coverage_pct': 0.0, 'month_map': {},
-            'all_candidates_evaluated': 0, 'skipped_tickers': _skipped, 'alternatives': [],
+            'all_candidates_evaluated': 0, 'skipped_tickers': _skipped,
+            'low_quality': _low_quality, 'alternatives': [],
             '_err': f'有效 ETF 僅 {len(_valid)} 檔，少於 min_etfs={min_etfs}',
         }
     _max_k = min(max_etfs, len(_valid), MAX_COMBO_SIZE)
@@ -141,6 +165,7 @@ def recommend_income_ladder(
         'month_map': _by_month,
         'all_candidates_evaluated': _evaluated,
         'skipped_tickers': _skipped,
+        'low_quality': _low_quality,
         'alternatives': _alts,
     }
 
@@ -234,10 +259,14 @@ def _render_month_grid(month_etfs: dict[int, list[str]], missing: set[int]) -> N
 def _render_propose_subtab() -> None:
     """💡 系統提議 sub-tab"""
     st.markdown('##### 💡 從高股息 10 檔自動挑選最佳組合')
-    _c1, _c2 = st.columns([1, 1])
+    _c1, _c2, _c3 = st.columns([1, 1, 1])
     with _c1:
         _max_etfs = st.slider('最多 ETF 數', 1, 5, value=4, key='_grape_max_etfs')
     with _c2:
+        _min_stars = st.slider('最低品質星等 ⭐', 1, 5, value=3,
+                               key='_grape_min_stars',
+                               help='1 = 不過濾；3+ 用 etf_quality 4 因子預先剔除低品質 ETF')
+    with _c3:
         _excl = st.checkbox('排除月配高息（00929/00940/00939）',
                             value=False, key='_grape_excl_monthly')
     if not st.button('🍇 生成提議', key='_grape_btn_propose', type='primary'):
@@ -245,7 +274,8 @@ def _render_propose_subtab() -> None:
         return
     with st.spinner('搜尋最佳組合中…（< 10 秒）'):
         _res = recommend_income_ladder(
-            max_etfs=_max_etfs, min_etfs=1, exclude_monthly=_excl)
+            max_etfs=_max_etfs, min_etfs=1,
+            exclude_monthly=_excl, min_stars=_min_stars)
     if _res.get('_err'):
         st.error(f'❌ {_res["_err"]}')
         return
@@ -266,6 +296,8 @@ def _render_propose_subtab() -> None:
     _render_month_grid(_res['month_map'], _res['missing_months'])
     if _res.get('skipped_tickers'):
         st.caption(f'⚪ 略過（配息資料不足）：{", ".join(_res["skipped_tickers"])}')
+    if _res.get('low_quality'):
+        st.caption(f'⭐ 品質星等過濾（< {_min_stars}★）剔除：{", ".join(_res["low_quality"])}')
     if _res.get('alternatives'):
         st.markdown('##### 🔄 同分次優組合')
         _alt_rows = [{'組合': ', '.join(_a), 'ETF 數': len(_a)}
