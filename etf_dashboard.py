@@ -2944,6 +2944,35 @@ def render_etf_ai(gemini_fn=None):
             else:
                 st.warning(answer or 'AI 回傳為空')
 
+# ── 美股 11 大 GICS 類股 ETF ─────────────────────────────────
+_US_SECTORS = {
+    'XLK':  {'name': '科技',        'sub': ['AAPL','MSFT','NVDA','AVGO','AMD']},
+    'XLF':  {'name': '金融',        'sub': ['JPM','BAC','WFC','GS','MS']},
+    'XLE':  {'name': '能源',        'sub': ['XOM','CVX','COP','SLB','MPC']},
+    'XLV':  {'name': '醫療',        'sub': ['LLY','UNH','JNJ','ABBV','MRK']},
+    'XLI':  {'name': '工業',        'sub': ['GE','CAT','HON','UPS','BA']},
+    'XLP':  {'name': '必需消費',    'sub': ['PG','KO','PEP','COST','WMT']},
+    'XLU':  {'name': '公用事業',    'sub': ['NEE','SO','DUK','AEP','D']},
+    'XLB':  {'name': '原物料',      'sub': ['LIN','APD','ECL','NEM','FCX']},
+    'XLRE': {'name': '房地產',      'sub': ['PLD','AMT','EQIX','CCI','SPG']},
+    'XLY':  {'name': '非必需消費',  'sub': ['AMZN','TSLA','HD','MCD','NKE']},
+    'XLC':  {'name': '通訊服務',    'sub': ['META','GOOGL','NFLX','DIS','T']},
+}
+
+# ── 台股類股代表 ETF/指數成分 ────────────────────────────────
+_TW_SECTORS = {
+    '2330.TW': {'name': '半導體',    'sub': ['2303.TW','2308.TW','2454.TW','3711.TW','2379.TW']},
+    '2317.TW': {'name': '電子製造',  'sub': ['2354.TW','2356.TW','3008.TW','2382.TW','3034.TW']},
+    '2412.TW': {'name': '電信',      'sub': ['3045.TW','4904.TW','2409.TW']},
+    '2882.TW': {'name': '金融',      'sub': ['2881.TW','2883.TW','2884.TW','2886.TW','2891.TW']},
+    '1301.TW': {'name': '塑化',      'sub': ['1303.TW','1326.TW','1402.TW']},
+    '2002.TW': {'name': '鋼鐵',      'sub': ['2006.TW','2007.TW','2010.TW']},
+    '1216.TW': {'name': '食品',      'sub': ['1201.TW','1210.TW','1225.TW']},
+    '2603.TW': {'name': '航運',      'sub': ['2609.TW','2615.TW','2617.TW']},
+    '9910.TW': {'name': '觀光',      'sub': ['2706.TW','2707.TW','2727.TW']},
+    '3008.TW': {'name': '光電',      'sub': ['2409.TW','3481.TW','2475.TW']},
+}
+
 _PERIOD_MAP = {'1日': '5d', '5日': '1mo', '1月': '3mo', '3月': '6mo'}
 
 @st.cache_data(ttl=1800, max_entries=10)
