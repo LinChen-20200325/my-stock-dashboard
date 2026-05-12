@@ -349,12 +349,73 @@ def fetch_sitca_expense_ratio(ticker: str, *, attempts: int = 1):
         return None
 
 
+def fetch_moneydj_expense_ratio(ticker: str):
+    """從 MoneyDJ ETF Basic0004 頁面抓「經理費 + 保管費」總費用率（私募/已下市 ETF 備援）。
+
+    URL: https://www.moneydj.com/ETF/X/Basic/Basic0004.xdjhtm?etfid=XXXX.TW
+
+    Returns
+    -------
+    float | None  比例形式（0.0036 = 0.36%）；找不到或抓取失敗回 None。
+    """
+    import re as _re_mdje
+    _t = (ticker or '').replace('.tw', '.TW').strip()
+    if not _t:
+        return None
+    # MoneyDJ etfid 通常吃 '0050.TW' 格式；純數字補 .TW
+    if _t.isdigit():
+        _t = f'{_t}.TW'
+    _url = f'https://www.moneydj.com/ETF/X/Basic/Basic0004.xdjhtm?etfid={_t}'
+    _hdrs = {
+        'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                       '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8',
+        'Referer': 'https://www.moneydj.com/',
+    }
+    try:
+        # curl_cffi Chrome TLS 指紋優先；失敗降級 requests
+        try:
+            from curl_cffi import requests as _cffi_mdje
+            _r = _cffi_mdje.get(_url, impersonate='chrome124', timeout=12)
+        except Exception:
+            import requests as _rq_mdje
+            _r = _rq_mdje.get(_url, headers=_hdrs, timeout=12, verify=False)
+        if _r.status_code != 200:
+            print(f'[MoneyDJ/expense] {_t}: HTTP {_r.status_code}')
+            return None
+        _txt = _r.text
+        # 直掃「經理費 X.XX%」與「保管費 X.XX%」合計；MoneyDJ Basic0004 表格常以 td 緊鄰呈現
+        _mng = _re_mdje.search(r'經理費[^\d%]{0,30}?(\d+(?:\.\d+)?)\s*%', _txt)
+        _cus = _re_mdje.search(r'保管費[^\d%]{0,30}?(\d+(?:\.\d+)?)\s*%', _txt)
+        if _mng and _cus:
+            _total = float(_mng.group(1)) + float(_cus.group(1))
+            print(f'[MoneyDJ/expense] ✅ {_t} = {_total}% (mng={_mng.group(1)}+cus={_cus.group(1)})')
+            return _total / 100.0
+        # Fallback：找「總費用率 / 內含費用率」單一欄位
+        _tot = _re_mdje.search(r'(?:總費用率|內含費用率|費用率)[^\d%]{0,30}?(\d+(?:\.\d+)?)\s*%', _txt)
+        if _tot:
+            _v = float(_tot.group(1))
+            print(f'[MoneyDJ/expense] ✅ {_t} = {_v}% (總費用率欄位)')
+            return _v / 100.0
+        print(f'[MoneyDJ/expense] ⚠️ {_t} 頁面無「經理費/保管費/總費用率」欄位')
+        return None
+    except Exception as _e:
+        print(f'[MoneyDJ/expense] ❌ {_t}: {type(_e).__name__}: {_e}')
+        return None
+
+
 def get_etf_expense_ratio_safe(ticker: str):
-    """安全讀取 ETF 費用率：SITCA primary（台股 ETF）→ yfinance fallback；任何 key 缺失回 None 不崩潰"""
-    # 台股 ETF（純數字代號）優先走 SITCA（投信投顧公會官方），yfinance 對 .TW 票常 stale
+    """安全讀取 ETF 費用率：SITCA → MoneyDJ → yfinance 三段備援；缺失回 None 不崩潰"""
+    # 1. 台股 ETF（純數字代號）優先走 SITCA（投信投顧公會官方），yfinance 對 .TW 票常 stale
     _sit = fetch_sitca_expense_ratio(ticker)
     if _sit is not None:
         return _sit
+    # 2. MoneyDJ Basic0004（私募/已下市/SITCA 未收錄的台股 ETF 兜底）
+    _mdj = fetch_moneydj_expense_ratio(ticker)
+    if _mdj is not None:
+        return _mdj
+    # 3. yfinance.info（海外 ETF 主要來源；台股 ETF 末段保險）
     try:
         info = fetch_etf_info(ticker)
         return (info.get('annualReportExpenseRatio')
@@ -1504,7 +1565,7 @@ def render_etf_single(gemini_fn=None):
     import re as _re_etf
     _is_overseas = not bool(_re_etf.match(r'^\d{4,6}\.(TW|TWO)$', ticker))
     _err_expense = None if (expense or _is_overseas) else (
-        'SITCA 未收錄此 ETF + yfinance.info[expenseRatio] 為空'
+        'SITCA + MoneyDJ + yfinance.info[expenseRatio] 3 源全失敗'
         '（私募 / 已下市可能）'
     )
     _err_nav = None if ((prem or {}).get('nav') is not None or _is_overseas) else (
@@ -4197,7 +4258,8 @@ def render_data_health_raw():
                     if (_ma_g.get('vix') or {}).get('current') is not None else None)
     _g_add('美國核心 CPI YoY', 'FRED',           'monthly',
            date_str=str((_ma_g.get('us_core_cpi') or {}).get('date',''))[:10] or None)
-    _g_add('🇹🇼 台灣製造業 PMI', 'CIER 中華經濟研究院 4 段備援', 'monthly',
+    _g_add('🇹🇼 台灣製造業 PMI',
+           'data.gov.tw+NDC+MacroMicro+CIER+StockFeel+鉅亨+FinMind+MoneyDJ 8 段', 'monthly',
            date_str=str((_ma_g.get('ism_pmi') or {}).get('date',''))[:10] or None)
     _g_add('NDC 景氣燈號',      'StockFeel+MacroMicro 雙源', 'monthly',
            date_str=str((_ma_g.get('ndc_signal') or {}).get('date',''))[:10] or None)
@@ -4789,8 +4851,8 @@ def render_data_health_raw():
                              optional=False,
                              error_msg=(_oversea_msg if _exp_na else _e1.get('_err_expense')),
                              probe_status=('na' if _exp_na else None),
-                             source='SITCA + yfinance 雙源',
-                             endpoint='sitca.org.tw IN2222_01 / .info[expenseRatio]',
+                             source='SITCA + MoneyDJ + yfinance 3 源',
+                             endpoint='sitca.org.tw IN2222_01 / moneydj Basic0004 / .info[expenseRatio]',
                              proxy=True))
             # NAV 淨值
             _prem = _e1.get('premium') or {}
