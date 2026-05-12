@@ -1197,6 +1197,15 @@ def render_etf_single(gemini_fn=None):
     c2.metric('內扣費用率', f'{expense*100:.2f}%' if expense else 'N/A')
     c3.metric('Beta', f'{float(beta):.2f}' if beta else 'N/A')
     c4.metric('AUM', f'{aum/1e9:.1f}B USD' if aum and aum > 1e6 else 'N/A')
+
+    # ── 自製品質評等（4 因子：AUM / 費用率 / 殖利率穩定度 / Beta）──
+    try:
+        from etf_quality import compute_etf_quality, render_quality_badge
+        _quality = compute_etf_quality(ticker)
+        render_quality_badge(_quality, compact=False)
+    except Exception as _e_q:
+        st.caption(f'⚪ 品質評等載入失敗：{type(_e_q).__name__}')
+
     st.markdown('---')
 
     # ── 策略一：MK 郭俊宏 ─────────────────────────────────────
