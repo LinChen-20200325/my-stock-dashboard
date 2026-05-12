@@ -1202,7 +1202,7 @@ def render_etf_single(gemini_fn=None):
     try:
         from etf_quality import compute_etf_quality, render_quality_badge
         _quality = compute_etf_quality(ticker)
-        render_quality_badge(_quality, compact=False)
+        render_quality_badge(_quality)
     except Exception as _e_q:
         st.caption(f'⚪ 品質評等載入失敗：{type(_e_q).__name__}')
 

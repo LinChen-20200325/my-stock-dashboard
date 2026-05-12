@@ -19,11 +19,13 @@ from etf_dashboard import (
     fetch_etf_info, fetch_etf_dividends, get_etf_expense_ratio_safe,
 )
 
-# ── 權重 ───────────────────────────────────────────────────
-_W_AUM = 0.30
-_W_EXP = 0.25
-_W_YCV = 0.25
-_W_BETA = 0.20
+# ── 權重（4 因子加總 = 1.0）─────────────────────────────────
+_WEIGHTS: dict[str, float] = {
+    'aum':      0.30,
+    'expense':  0.25,
+    'yield_cv': 0.25,
+    'beta':     0.20,
+}
 
 # ── 因子閾值（滿分 / 零分）────────────────────────────────
 # AUM in TWD：1e9 (10億) → 0；1e10 (100億) → 1
@@ -59,28 +61,29 @@ def score_expense(expense_ratio: float | None) -> float | None:
     return max(0.0, min(1.0, (_EXP_LO - float(expense_ratio)) / (_EXP_LO - _EXP_HI)))
 
 
-def score_yield_cv(divs: pd.Series | None) -> tuple[float | None, float | None]:
-    """殖利率穩定度：近 3Y 年度配息 CV (std/mean) → 0-1 分。
-
-    Returns
-    -------
-    (score, cv_value) — 樣本不足回 (None, None)。
-    """
+def _yield_cv(divs: pd.Series | None) -> float | None:
+    """近 3Y 年度配息變異係數（std/mean）；樣本不足回 None。內部 helper。"""
     if divs is None or divs.empty:
-        return (None, None)
+        return None
     _cutoff = pd.Timestamp(_dt.date.today() - _dt.timedelta(days=3 * 365))
     _recent = divs[divs.index >= _cutoff]
     if len(_recent) < 4:
-        return (None, None)
+        return None
     _by_year = _recent.groupby(_recent.index.year).sum()
     if len(_by_year) < 2:
-        return (None, None)
+        return None
     _mean = float(_by_year.mean())
     if _mean <= 0:
-        return (None, None)
-    _cv = float(_by_year.std() / _mean)
-    _sc = max(0.0, min(1.0, (_YCV_LO - _cv) / (_YCV_LO - _YCV_HI)))
-    return (_sc, round(_cv, 3))
+        return None
+    return float(_by_year.std() / _mean)
+
+
+def score_yield_cv(divs: pd.Series | None) -> float | None:
+    """殖利率穩定度：CV ≤ 0.15→1 / ≥ 0.6→0；資料不足回 None。"""
+    _cv = _yield_cv(divs)
+    if _cv is None:
+        return None
+    return max(0.0, min(1.0, (_YCV_LO - _cv) / (_YCV_LO - _YCV_HI)))
 
 
 def score_beta(beta: float | None) -> float | None:
@@ -113,19 +116,31 @@ def compute_etf_quality(ticker: str) -> dict:
         _divs = fetch_etf_dividends(ticker)
     except Exception as _e:
         return {'stars': None, '_err': f'抓取失敗 {type(_e).__name__}'}
-    _ycv_sc, _ycv_val = score_yield_cv(_divs)
+    # _yield_cv 只算 1 次；score_yield_cv 是純轉換不再做 groupby
+    _ycv_raw = _yield_cv(_divs)
     _factors = {
         'aum':      {'val': _aum,  'score': score_aum(_aum)},
         'expense':  {'val': _exp,  'score': score_expense(_exp)},
-        'yield_cv': {'val': _ycv_val, 'score': _ycv_sc},
+        'yield_cv': {'val': round(_ycv_raw, 3) if _ycv_raw is not None else None,
+                     'score': score_yield_cv(_divs)},
         'beta':     {'val': _beta, 'score': score_beta(_beta)},
     }
-    _W = {'aum': _W_AUM, 'expense': _W_EXP, 'yield_cv': _W_YCV, 'beta': _W_BETA}
-    _valid_w = sum(_W[k] for k, v in _factors.items() if v['score'] is not None)
+    # ── 單迴圈合一：valid_w / weighted_score / weakest 一次跑完 ──
+    _valid_w = 0.0
+    _weighted = 0.0
+    _valid_pairs: list[tuple[str, float]] = []
+    for _k, _v in _factors.items():
+        _s = _v['score']
+        if _s is None:
+            continue
+        _w = _WEIGHTS[_k]
+        _valid_w += _w
+        _weighted += _w * _s
+        _valid_pairs.append((_k, _s))
     if _valid_w <= 0:
         return {'stars': None, '_err': '4 因子全缺資料', 'factors': _factors}
-    _score = sum(_W[k] * v['score']
-                 for k, v in _factors.items() if v['score'] is not None) / _valid_w
+    _score = _weighted / _valid_w
+    _weakest = min(_valid_pairs, key=lambda x: x[1])[0]
     # 5 顆星映射
     if _score >= 0.80:
         _stars = 5
@@ -137,13 +152,6 @@ def compute_etf_quality(ticker: str) -> dict:
         _stars = 2
     else:
         _stars = 1
-    # 最弱因子（用於 UI 提示）
-    _weakest = None
-    _min = 1.1
-    for _k, _v in _factors.items():
-        if _v['score'] is not None and _v['score'] < _min:
-            _min = _v['score']
-            _weakest = _k
     return {
         'stars': _stars,
         'score': round(_score, 3),
@@ -179,8 +187,8 @@ def _fmt_factor_val(key: str, val) -> str:
     return str(val)
 
 
-def render_quality_badge(quality: dict | None, compact: bool = False) -> None:
-    """渲染 ETF 品質徽章。compact=True 用單行迷你版（適合列表）。"""
+def render_quality_badge(quality: dict | None) -> None:
+    """渲染 ETF 品質徽章（完整版：星等 + 4 因子分條 + 最弱項提示）。"""
     if quality is None or quality.get('stars') is None:
         _msg = quality.get('_err', '未評等') if quality else '未評等'
         st.caption(f'⚪ 品質評等：{_msg}')
@@ -191,12 +199,6 @@ def render_quality_badge(quality: dict | None, compact: bool = False) -> None:
     _color = ('#3fb950' if _stars >= 4 else
               '#d29922' if _stars == 3 else '#f85149')
     _star_str = '★' * _stars + '☆' * (5 - _stars)
-    if compact:
-        st.markdown(
-            f"<span style='color:{_color};font-weight:700;font-size:14px'>{_star_str}</span> "
-            f"<span style='color:#8b949e;font-size:11px'>品質 {_stars}/5</span>",
-            unsafe_allow_html=True)
-        return
     st.markdown(
         f"#### ⭐ 品質評等　"
         f"<span style='color:{_color};font-weight:700;font-size:22px'>{_star_str}</span>　"
