@@ -22,7 +22,7 @@
 - 設計文件：`ARCHITECTURE.md` · `DATASTATION.md` · `STRATEGY_MANUAL.md`
 - 測試：`test_*.py`
 
-## 🚀 最近完工（PR #42-#48，2026-05）
+## 🚀 最近完工（PR #42-#51，2026-05）
 | PR | 任務 | SHA |
 |---|---|---|
 | #42 | ETF 折溢價 G1+G2 守門員（NAV-Price gap + 主動式 ETF 異常閾值） | c21e577 |
@@ -32,11 +32,14 @@
 | #46 | 美林時鐘景氣循環圖（PMI YoY × CPI YoY） | cdfd4a8 |
 | #47 | 葡萄串領息法（高股息 ETF 月配組合最佳化） | 87edcd1 |
 | #48 | ETF 自製品質評等（4 因子合成 1-5 顆星） | b848816 |
+| #49 | STATE.md 治理同步 | 9041a95 |
+| #50 | etf_quality.py 排毒重構（5 毒素清除） | 0cc5b81 |
+| #51 | etf_dashboard.py fetch_etf_nav_history 排毒（8 毒素清除，ruff −27） | （pending） |
 
 ## 🎯 Backlog
 - **環境工**：5 條 stale remote branches 清理（sandbox token 無 delete 權）
-- **部署驗證**：PR #42-#48 累積 Streamlit Cloud 上線驗收項目
-- **技術債**：`etf_dashboard.py` 4906+ 行可拆檔；`app.py` ruff 682 baseline errors
+- **部署驗證**：PR #42-#51 累積 Streamlit Cloud 上線驗收項目
+- **技術債**：`etf_dashboard.py` 仍 5107 行（可進一步拆 render_data_health / render_data_health_raw 兩個 ~970 行巨型函式）；`app.py` ruff 682 baseline errors
 
 ## 🧱 開發協議
 依 `CLAUDE.md` v2.0 核心協議運行（§1-§5 嚴格三步法 / 防幻覺 / 精準讀寫 / 鋼鐵自省 / 卡關救援）。

@@ -516,27 +516,57 @@ def check_vcp_signal(df: pd.DataFrame) -> dict:
         pass
     return r
 
+# ── NAV 合理範圍常數（用於 fetch_etf_nav_history 多源 sanity check）──
+_NAV_MIN, _NAV_MAX = 0.5, 100000
+
+
+def _safe_float(s, strip_chars: str = ',%') -> float | None:
+    """安全 float 解析：失敗回 None。
+
+    Replaces inline `try: float(...) except: pass` pattern；避免 bare except
+    吞掉 KeyboardInterrupt / SystemExit。
+    """
+    try:
+        _t = str(s).strip()
+        for _c in strip_chars:
+            _t = _t.replace(_c, '')
+        return float(_t) if _t else None
+    except (ValueError, TypeError):
+        return None
+
+
 @st.cache_data(ttl=7200, show_spinner=False, max_entries=10)
 def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 4) -> "pd.DataFrame":
     """ETF 歷史淨值及折溢價（最近 N 個交易日）
-    資料來源優先順序：
+
+    資料來源優先順序（5 段備援 + 1 兜底）：
       1. FinMind TaiwanETFNetAssetValue（批次，有/無 token 皆可）
       2. goodinfo.tw StockDetail（不受 TWSE IP 封鎖）
       3. TWSE OpenAPI（僅 NAS Proxy 環境）
       4. MoneyDJ BeautifulSoup
       5. yfinance navPrice
-      6. FinMind 過舊資料兜底
-    回傳欄位：date / price / nav / premium / premium_pct
+      *. 兜底：FinMind 過舊資料（前述 5 段全失敗時）
+
+    Args
+    ----
+    ticker : str  ETF 代號（含 .TW 後綴）
+    days   : int  目標回溯交易日（含緩衝 +10 日）
+    ver    : int  cache key bumper — 升版觸發 @st.cache_data 失效；不入函式邏輯。
+
+    Returns
+    -------
+    pd.DataFrame  欄位：date / price / nav / premium / premium_pct
     """
-    import os, datetime as _dt, requests as _rq_etfnav
-    import pandas as _pd_etfnav
+    import os
+    import datetime as _dt
+    import requests as _rq_etfnav
     code = ticker.replace('.TW', '').replace('.TWO', '')
     # st.secrets 優先（Streamlit Cloud secrets 不自動匯出至 os.environ）
     token = (getattr(st, 'secrets', {}).get('FINMIND_TOKEN')
              or os.environ.get('FINMIND_TOKEN', ''))
     start = (_dt.date.today() - _dt.timedelta(days=days + 10)).strftime('%Y-%m-%d')
-    _df_stale = None   # 備援：FinMind 過舊資料
-    _days_stale = 999
+    _df_stale = None       # 備援：FinMind 過舊資料
+    _days_stale: int | None = None
 
     # ── 1. FinMind ETF NAV（試兩個 dataset 名稱 + 多種欄位名稱）───────────
     for _ds1 in ['TaiwanETFNetAssetValue', 'TaiwanStockETFNAV']:
@@ -551,15 +581,15 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 4) -> "pd.Data
             # 接受 status=200 / status=None（部分 proxy 環境）；排除已知錯誤碼
             _status_ok = str(_jstatus) not in ('400', '401', '402', '403', '404', '500')
             if _jdata and _status_ok:
-                _df = _pd_etfnav.DataFrame(_jdata)
+                _df = pd.DataFrame(_jdata)
                 # 自動偵測 NAV 欄位名稱（FinMind 兩個版本欄位名不同）
                 _nav_field = next((f for f in ['nav', 'base_unit_net_value', 'NavPrice', 'netAssetValue']
                                    if f in _df.columns), None)
                 if _nav_field is None:
                     print(f'[ETF NAV] {code} {_ds1}: 找不到 NAV 欄位，現有={list(_df.columns)}')
                     continue
-                _df['date'] = _pd_etfnav.to_datetime(_df['date']).dt.date
-                _df['nav']  = _pd_etfnav.to_numeric(_df[_nav_field], errors='coerce')
+                _df['date'] = pd.to_datetime(_df['date']).dt.date
+                _df['nav']  = pd.to_numeric(_df[_nav_field], errors='coerce')
                 _df = _df[_df['nav'].notna() & (_df['nav'] > 0)].sort_values('date')
                 if _df.empty:
                     print(f'[ETF NAV] {code} {_ds1}: 所有 nav 欄位為空/NaN，跳過')
@@ -600,19 +630,18 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 4) -> "pd.Data
                 if _txt_gi in ('淨值', '每單位淨值', 'NAV'):
                     _sib_gi = _td_gi.find_next_sibling('td')
                     if _sib_gi:
-                        try:
-                            _nav_gi = float(_sib_gi.get_text(strip=True).replace(',', ''))
-                            if not (0.5 < _nav_gi < 100000): _nav_gi = None
-                        except: pass
-                    if _nav_gi: break
+                        _v = _safe_float(_sib_gi.get_text(strip=True))
+                        if _v is not None and _NAV_MIN < _v < _NAV_MAX:
+                            _nav_gi = _v
+                    if _nav_gi:
+                        break
             # 策略2：regex 掃全文
             if not _nav_gi:
                 _m_gi = _re_gi.search(r'淨值[^\d<]{0,30}?(\d{1,5}\.\d{2,6})', _r_gi.text)
                 if _m_gi:
-                    try:
-                        _nav_gi = float(_m_gi.group(1))
-                        if not (0.5 < _nav_gi < 100000): _nav_gi = None
-                    except: pass
+                    _v = _safe_float(_m_gi.group(1))
+                    if _v is not None and _NAV_MIN < _v < _NAV_MAX:
+                        _nav_gi = _v
             # 嘗試抓折溢價率
             if _nav_gi:
                 for _td_gi2 in _soup_gi.find_all('td'):
@@ -621,13 +650,13 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 4) -> "pd.Data
                         if _sib_gi2:
                             _m_p = _re_gi.search(r'([+-]?\d+\.?\d*)', _sib_gi2.get_text(strip=True))
                             if _m_p:
-                                try: _prem_gi = float(_m_p.group(1))
-                                except: pass
-                        if _prem_gi is not None: break
+                                _prem_gi = _safe_float(_m_p.group(1))
+                        if _prem_gi is not None:
+                            break
                 _row_gi = {'date': _dt.date.today(), 'nav': _nav_gi}
                 if _prem_gi is not None: _row_gi['premium_pct'] = _prem_gi
                 print(f'[ETF NAV] {code} goodinfo: nav={_nav_gi} prem={_prem_gi}%')
-                return _pd_etfnav.DataFrame([_row_gi])
+                return pd.DataFrame([_row_gi])
             else:
                 print(f'[ETF NAV] {code} goodinfo: 找不到淨值欄位')
         else:
@@ -645,27 +674,26 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 4) -> "pd.Data
     def _parse_twse_row(row_dict, ep_label):
         _nav2 = 0.0
         for _nk in ['單位淨值', '淨值', 'NetAssetValue', 'nav']:
-            _nv = str(row_dict.get(_nk, '')).replace(',', '').strip()
-            if _nv:
-                try: _nav2 = float(_nv); break
-                except: pass
+            _v = _safe_float(row_dict.get(_nk, ''))
+            if _v is not None:
+                _nav2 = _v
+                break
         _price2 = 0.0
         for _pk in ['收盤價', 'ClosingPrice', 'close']:
-            _pv2 = str(row_dict.get(_pk, '')).replace(',', '').strip()
-            if _pv2:
-                try: _price2 = float(_pv2); break
-                except: pass
+            _v = _safe_float(row_dict.get(_pk, ''))
+            if _v is not None:
+                _price2 = _v
+                break
         _prem_key = next((k for k in row_dict if '折溢價' in str(k)), None)
-        _prem2 = None
-        if _prem_key:
-            try: _prem2 = float(str(row_dict[_prem_key]).replace('%', '').replace(',', '') or 0)
-            except: pass
+        _prem2 = _safe_float(row_dict[_prem_key]) if _prem_key else None
         if _prem2 is None and _nav2 > 0 and _price2 > 0:
             _prem2 = round((_price2 - _nav2) / _nav2 * 100, 2)
         if _nav2 > 0:
             _r_out = {'date': _dt.date.today(), 'nav': _nav2}
-            if _price2 > 0: _r_out['price'] = _price2
-            if _prem2 is not None: _r_out['premium_pct'] = _prem2
+            if _price2 > 0:
+                _r_out['price'] = _price2
+            if _prem2 is not None:
+                _r_out['premium_pct'] = _prem2
             print(f'[ETF NAV] {code} TWSE({ep_label}): nav={_nav2} price={_price2} prem={_prem2}%')
             return _r_out
         return None
@@ -679,7 +707,7 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 4) -> "pd.Data
                                                       'User-Agent': 'Mozilla/5.0'},
                                       proxies=_proxy_candidate, timeout=10, verify=False)
                 _j2 = _r2.json()
-                _df2 = _pd_etfnav.DataFrame(_j2 if isinstance(_j2, list) else [])
+                _df2 = pd.DataFrame(_j2 if isinstance(_j2, list) else [])
                 if _df2.empty:
                     print(f'[ETF NAV] TWSE {_op_id2}({_ptag}): 回傳空資料'); continue
                 _code_col = next((c for c in _df2.columns if '證券代號' in str(c) or c == 'code'), None)
@@ -690,11 +718,10 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 4) -> "pd.Data
                     print(f'[ETF NAV] TWSE {_op_id2}({_ptag}): 找不到 {code}'); continue
                 _out2 = _parse_twse_row(_match.iloc[0].to_dict(), f'{_op_id2}/{_ptag}')
                 if _out2:
-                    return _pd_etfnav.DataFrame([_out2])
+                    return pd.DataFrame([_out2])
             except Exception as _e2:
                 print(f'[ETF NAV] TWSE {_op_id2}({_ptag}) {code}: {_e2}')
-        if _proxy_candidate is None and _nas_nav is None:
-            break  # 無 proxy 只跑一輪
+        # 若無 _nas_nav，外層 list 為 [None] 單元素，loop 自然結束無需 break
 
     # ── 4. MoneyDJ 爬蟲（BeautifulSoup，不需 token）──────────────────────
     try:
@@ -721,22 +748,19 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 4) -> "pd.Data
                 if ('淨值' in _t or 'NAV' in _t) and len(_t) < 20:
                     _td = _th.find_next_sibling()
                     if _td:
-                        try:
-                            _nav_mdj = float(_td.get_text(strip=True).replace(',', ''))
-                            if _nav_mdj > 0:
-                                break
-                        except Exception:
-                            pass
+                        _v = _safe_float(_td.get_text(strip=True))
+                        if _v is not None and _v > 0:
+                            _nav_mdj = _v
+                            break
             # 策略2：regex 直接掃 HTML
             if not _nav_mdj:
                 import re as _re_mdj
                 _m = _re_mdj.search(r'(?:淨值|NAV)[^\d]{0,20}?(\d{1,5}\.\d{2,6})', _r_mdj.text)
                 if _m:
-                    try: _nav_mdj = float(_m.group(1))
-                    except Exception: pass
+                    _nav_mdj = _safe_float(_m.group(1))
             if _nav_mdj and _nav_mdj > 0:
                 print(f'[ETF NAV] MoneyDJ {code}: nav={_nav_mdj}')
-                return _pd_etfnav.DataFrame([{'date': _dt.date.today(), 'nav': _nav_mdj}])
+                return pd.DataFrame([{'date': _dt.date.today(), 'nav': _nav_mdj}])
             else:
                 print(f'[ETF NAV] MoneyDJ {code}: HTTP {_r_mdj.status_code} 找不到淨值')
         else:
@@ -755,7 +779,7 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 4) -> "pd.Data
                 _nav3 = _info3.get('navPrice') or _info3.get('regularMarketNAV')
                 if _nav3 and float(_nav3) > 0:
                     print(f'[ETF NAV] yfinance {code}{_sfx3}: navPrice={_nav3}')
-                    return _pd_etfnav.DataFrame([{'date': _dt.date.today(), 'nav': float(_nav3)}])
+                    return pd.DataFrame([{'date': _dt.date.today(), 'nav': float(_nav3)}])
                 break  # 沒資料，不 retry
             except Exception as _e3:
                 _e3s = str(_e3)
@@ -771,7 +795,7 @@ def fetch_etf_nav_history(ticker: str, days: int = 35, ver: int = 4) -> "pd.Data
         print(f'[ETF NAV] {code} 最終兜底: FinMind過舊資料({_days_stale}d)，所有即時來源失敗')
         return _df_stale
 
-    return _pd_etfnav.DataFrame()
+    return pd.DataFrame()
 
 def calc_premium_discount(info: dict, df: "pd.DataFrame", ticker: str = '') -> dict:
     """折溢價率 = (市價 - 淨值) / 淨值 × 100
