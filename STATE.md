@@ -24,7 +24,7 @@
 - 設計文件：`ARCHITECTURE.md` · `DATASTATION.md` · `STRATEGY_MANUAL.md`
 - 測試：`test_*.py`
 
-## 🚀 最近完工（PR #42-#61，2026-05）
+## 🚀 最近完工（PR #42-#64，2026-05）
 | PR | 任務 | SHA |
 |---|---|---|
 | #42 | ETF 折溢價 G1+G2 守門員（NAV-Price gap + 主動式 ETF 異常閾值） | c21e577 |
@@ -47,16 +47,19 @@
 | #59 | docs 同步 PR #54-#58 | 1684c3c |
 | #60 | app.py P2-B Phase 2：抽 ui_widgets.py（8 純 HTML 函式，−109 行） | bd548d0 |
 | #61 | app.py P2-B Phase 3：抽 scoring_helpers.py（3 純函式，−221 行） | f935b49 |
+| #62 | docs 同步 PR #59-#61 | 2a0f433 |
+| #63 | app.py ruff 排毒 P2 第三波（E722 + E741 + E731，−33） | 9320c52 |
+| #64 | app.py ruff 排毒 P2 收尾（E402 + F821 noqa，21 → **0 errors** 🎯） | 8345b40 |
 
 ## 🎯 Backlog
-- **環境工**：17 條 stale remote branches 清理（PR #42-#61 累積，sandbox token 無 delete 權）
-- **部署驗證**：PR #42-#61 累積 Streamlit Cloud 上線驗收項目
+- **環境工**：19 條 stale remote branches 清理（PR #42-#64 累積，sandbox token 無 delete 權）
+- **部署驗證**：PR #42-#64 累積 Streamlit Cloud 上線驗收項目
 - **PMI 真實異常**：PR #53 加好診斷工具，下次 PMI 紅燈時用 `🔬 8 段備援源詳細診斷` 按鈕定位根因（proxy 死 / regex 過時 / 端點改版）
-- **技術債（巨幅改善）**：
-  - `app.py` ruff errors **681 → 54**（−92%，PR #56/#57/#60）
-  - `app.py` 9622 → **9181 行**（−441，−4.6%，PR #58/#60/#61 抽 17 函式至 3 新模組）
+- **技術債（已全面清乾淨）**：
+  - 🎯 `app.py` ruff errors **681 → 0（100% clean）**（PR #56/#57/#60/#63/#64）
+  - `app.py` 9622 → **9183 行**（−439，−4.6%，PR #58/#60/#61 抽 17 函式至 3 新模組）
   - `etf_dashboard.py` 3122 行
-- **P2-B Phase 4 候選**：TAB 級 def wrap（拆 `with tab_xxx:` 巨型 block，~8000 行，需謹慎大重構）
+- **P2-B Phase 4 候選**（高風險）：TAB 級 def wrap（拆 `with tab_xxx:` 巨型 block，~8000 行，需謹慎大重構）
 
 ## 🧱 開發協議
 依 `CLAUDE.md` v2.0 核心協議運行（§1-§5 嚴格三步法 / 防幻覺 / 精準讀寫 / 鋼鐵自省 / 卡關救援）。
