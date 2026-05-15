@@ -23,15 +23,15 @@ def _bps():
         s = requests.Session()
     s.verify = False
     return s
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import yfinance as yf
+from concurrent.futures import ThreadPoolExecutor, as_completed  # noqa: E402
+import yfinance as yf  # noqa: E402
 
 print('[INFO] main.py v3.0 戰情室 載入完成')
 
-from data_loader import StockDataLoader
-from chart_plotter import plot_combined_chart, plot_revenue_chart, plot_quarterly_chart
-from leading_indicators import build_leading_fast, render_leading_table
-from daily_checklist import (
+from data_loader import StockDataLoader  # noqa: E402
+from chart_plotter import plot_combined_chart, plot_revenue_chart, plot_quarterly_chart  # noqa: E402
+from leading_indicators import build_leading_fast, render_leading_table  # noqa: E402
+from daily_checklist import (  # noqa: E402
     fetch_single, calc_stats, sparkline, multi_chart,
     stat_card, section_header,
     fetch_institutional, fetch_margin_balance,
@@ -43,25 +43,25 @@ from daily_checklist import (
 )
 # ── 新增模組（根據說明書 v1.0）──────────────────────────────
 # ── v3.0 新增模組（§5-§11）──────────────────────────────────
-from market_strategy import get_market_assessment
-from macro_state_locker import MacroStateLocker, load_macro_state, calculate_system_state
-from v4_strategy_engine import V4StrategyEngine   # v4.0 核心策略引擎
-from v5_modules import (                           # v5.0 大師滿配
+from market_strategy import get_market_assessment  # noqa: E402
+from macro_state_locker import MacroStateLocker, load_macro_state, calculate_system_state  # noqa: E402
+from v4_strategy_engine import V4StrategyEngine   # v4.0 核心策略引擎  # noqa: E402
+from v5_modules import (                           # v5.0 大師滿配  # noqa: E402
     analyze_fundamental_leading, detect_bollinger_breakout,
     calc_dividend_yield_357,
 )
-from scoring_engine import calc_rs_score, rs_slope
-from etf_dashboard import (
+from scoring_engine import calc_rs_score, rs_slope  # noqa: E402
+from etf_dashboard import (  # noqa: E402
     render_etf_single, render_etf_portfolio,
     render_etf_backtest, render_etf_ai,
     render_sector_heatmap,
 )
 from health_inspector import render_data_health_raw  # noqa: E402
 from grape_ladder import render_grape_ladder  # noqa: E402
-from persona import TAIWAN_ADVISOR_PERSONA as _PERSONA
-from financial_health_engine import analyze_financial_health, no_ai_overall_verdict
-from data_loader import fetch_financial_statements
-from macro_alert import fetch_macro_snapshot, check_macro_alerts, render_macro_alerts
+from persona import TAIWAN_ADVISOR_PERSONA as _PERSONA  # noqa: E402
+from financial_health_engine import analyze_financial_health, no_ai_overall_verdict  # noqa: E402
+from data_loader import fetch_financial_statements  # noqa: E402
+from macro_alert import fetch_macro_snapshot, check_macro_alerts, render_macro_alerts  # noqa: E402
 
 api_key       = st.secrets.get('GEMINI_API_KEY', os.environ.get('GEMINI_API_KEY', ''))  # [Fixed] st.secrets 優先
 FINMIND_TOKEN = st.secrets.get('FINMIND_TOKEN',  os.environ.get('FINMIND_TOKEN', ''))   # [Fixed] st.secrets 優先
@@ -5546,7 +5546,7 @@ padding:14px 18px;margin-bottom:12px;">
             _price_chk  = float(df2['close'].iloc[-1]) if df2 is not None and not df2.empty else 0
             _open5_chk  = float(df2['close'].iloc[-6]) if df2 is not None and len(df2)>=6 else _price_chk
             _surge_chk  = round((_price_chk - _open5_chk) / max(_open5_chk,1) * 100, 1)
-            _stop_chk   = round(_price_chk - 1.5 * (_atr2_val if '_atr2_val' in dir() else _price_chk*0.07), 2)
+            _stop_chk   = round(_price_chk - 1.5 * (_atr2_val if '_atr2_val' in dir() else _price_chk*0.07), 2)  # noqa: F821
             _q1 = st.checkbox(
                 f'① 確認非空頭格局（目前：{_wr_reg_chk}）',
                 value=_wr_reg_chk != 'bear', key=f't2_q1_{sid2}',
@@ -6333,8 +6333,8 @@ border-left:4px solid {_verdict_color};border-radius:8px;padding:12px 14px;margi
                 'vcp_ok':      bool(vcp2 and isinstance(vcp2,dict) and vcp2.get('contracting')),
                 'bias_240':    _bias_g.get('bias_240', 0),
                 'bias_20':     _bias_g.get('bias_20', 0),
-                'val_label':   _357_label2 if '_357_label2' in dir() else '',
-                'trend':       _trend_text2 if '_trend_text2' in dir() else '',
+                'val_label':   _357_label2 if '_357_label2' in dir() else '',  # noqa: F821
+                'trend':       _trend_text2 if '_trend_text2' in dir() else '',  # noqa: F821
                 'cl':          cl2 / 1e8 if cl2 and cl2 > 0 else 0,
                 'cx':          cx2 / 1e8 if cx2 and cx2 > 0 else 0,
                 'foreign_buy': _inst_g.get(_fk_g,{}).get('net',0) if _fk_g else 0,
@@ -6591,8 +6591,8 @@ padding:12px 16px;margin:8px 0;">
         fc1,fc2=st.columns(2)
         cl_ok=cl2 is not None and cl2>0
         cx_ok=cx2 is not None and cx2>0
-        _cl_st = _fin_st2.get('contract_liabilities') if '_fin_st2' in dir() else None
-        _cx_st = _fin_st2.get('fixed_assets')         if '_fin_st2' in dir() else None
+        _cl_st = _fin_st2.get('contract_liabilities') if '_fin_st2' in dir() else None  # noqa: F821
+        _cx_st = _fin_st2.get('fixed_assets')         if '_fin_st2' in dir() else None  # noqa: F821
         _cl_label = "--" if cl_ok else '無數據'
         _cx_label = "--" if cx_ok else '無數據'
         _cl_color_map = {'ok':'#3fb950','missing':'#d29922','not_applicable':'#484f58','fetch_error':'#f85149'}
