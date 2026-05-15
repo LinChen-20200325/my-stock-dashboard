@@ -24,7 +24,7 @@
 - 設計文件：`ARCHITECTURE.md` · `DATASTATION.md` · `STRATEGY_MANUAL.md`
 - 測試：`test_*.py`
 
-## 🚀 最近完工（PR #42-#80，2026-05）
+## 🚀 最近完工（PR #42-#82，2026-05）
 | PR | 任務 | SHA |
 |---|---|---|
 | #42 | ETF 折溢價 G1+G2 守門員（NAV-Price gap + 主動式 ETF 異常閾值） | c21e577 |
@@ -65,6 +65,7 @@
 | #77 | etf_dashboard P2-B Phase 6-C：抽 etf_tab_backtest.py（243 行，13 依賴，順手清 10 E701/E702） | 2533ff0 |
 | #78 | etf_dashboard P2-B Phase 6-D：抽 etf_tab_ai.py（146 行，5 依賴）🏆 收官 | 8a089cb |
 | #80 | fix(config): 新增 `FINMIND_TOKEN` 匯出 — 修復 tab_stock / tab_stock_grp 線上 ImportError | fc897fd |
+| #82 | fix(app): `sys.modules['app']` 別名 — 修復線上 `StreamlitSetPageConfigMustBeFirstCommandError`（治 4 處 `from app import` re-execute） | 0b993b2 |
 
 ## 🎯 Backlog
 - **環境工**：33 條 stale remote branches 清理（PR #42-#78 累積，sandbox token 無 delete 權）
