@@ -9,10 +9,11 @@
 ## 🏗️ 主要模組
 | 層 | 檔案 |
 |---|---|
-| **UI** | `app.py`（主入口）· `etf_dashboard.py` |
+| **UI** | `app.py`（主入口，PR #58 後 9511 行）· `etf_dashboard.py` |
 | **資料抓取** | `data_loader.py` · `macro_core.py`（含 PR #53 `diagnose_tw_pmi_sources`）· `tw_macro.py` · `daily_checklist.py` · `leading_indicators.py` · `tw_stock_data_fetcher.py` |
 | **資料註冊** | `data_registry.py` · `data_config.py` · `config.py` |
 | **引擎** | `scoring_engine.py` · `financial_health_engine.py` · `market_strategy.py` · `risk_control.py` · `backtest_engine.py` · `unified_decision.py` · `v4_strategy_engine.py` · `v5_modules.py` · `yield_screener.py` |
+| **技術指標** | `tech_indicators.py`（PR #58 從 app.py 抽出 6 個純函式：RSI/IBS/VR/KD/BB/VCP，零 Streamlit 依賴）|
 | **ETF 工具鏈** | `etf_categories.py`（同儕分類）· `merrill_clock.py`（景氣循環）· `grape_ladder.py`（月配組合最佳化）· `etf_quality.py`（4 因子品質評等） |
 | **健診** | `health_inspector.py`（Raw Data 資料健診儀表板，PR #52 從 etf_dashboard 抽出）|
 | **AI / 警示** | `ai_engine.py` · `macro_alert.py` · `macro_state_locker.py` · `persona.py` |
@@ -23,7 +24,7 @@
 - 設計文件：`ARCHITECTURE.md` · `DATASTATION.md` · `STRATEGY_MANUAL.md`
 - 測試：`test_*.py`
 
-## 🚀 最近完工（PR #42-#53，2026-05）
+## 🚀 最近完工（PR #42-#58，2026-05）
 | PR | 任務 | SHA |
 |---|---|---|
 | #42 | ETF 折溢價 G1+G2 守門員（NAV-Price gap + 主動式 ETF 異常閾值） | c21e577 |
@@ -38,12 +39,24 @@
 | #51 | etf_dashboard.py fetch_etf_nav_history 排毒（8 毒素清除，ruff −27） | 2ffc6f6 |
 | #52 | health_inspector.py 抽出 + 刪 render_data_health dead code (1019 行) | 11f165a |
 | #53 | hotfix `_US_SECTORS` / `_TW_SECTORS` 還原 + PMI 8 段備援源診斷面板 | 9b9bec8 |
+| #54 | docs 同步：STATE.md + ARCHITECTURE.md 收錄 PR #53 | 8e0c36e |
+| #55 | fix(etf) 海外 ETF regex 漏字母後綴 → 誤判台灣主動式 ETF | acfb2b9 |
+| #56 | app.py ruff 排毒 P2 第一波（F401 + F541 + E401 + F841，−69） | fd0607d |
+| #57 | app.py ruff 排毒 P2 第二波（E701 + E702，−557，−91%） | 59d0b71 |
+| #58 | app.py P2-B Phase 1：抽 tech_indicators.py（6 純函式，−111 行） | 620b5e0 |
 
 ## 🎯 Backlog
-- **環境工**：13 條 stale remote branches 清理（含已合 PR #42-#53，sandbox token 無 delete 權）
-- **部署驗證**：PR #42-#53 累積 Streamlit Cloud 上線驗收項目
+- **環境工**：15 條 stale remote branches 清理（PR #42-#58 累積，sandbox token 無 delete 權）
+- **部署驗證**：PR #42-#58 累積 Streamlit Cloud 上線驗收項目
 - **PMI 真實異常**：PR #53 加好診斷工具，下次 PMI 紅燈時用 `🔬 8 段備援源詳細診斷` 按鈕定位根因（proxy 死 / regex 過時 / 端點改版）
-- **技術債**：`etf_dashboard.py` 5107 → **3122 行**（PR #53 +29 行還原）；`app.py` ruff 681 baseline errors（從 682 微降）
+- **技術債（巨幅改善）**：
+  - `app.py` ruff errors **681 → 55**（−92%，PR #56/#57）
+  - `app.py` 9622 → **9511 行**（PR #58 抽出 6 函式至 tech_indicators.py）
+  - `etf_dashboard.py` 3122 行
+- **P2-B 後續 Phase**：
+  - Phase 2 `ui_widgets.py`（8 個 UI helpers，L936-1161 共 ~225 行）
+  - Phase 3 `scoring_helpers.py`（3 個評分函式，L708-935 共 ~228 行）
+  - Phase 4 TAB 級 def wrap（大重構，~8000 行）
 
 ## 🧱 開發協議
 依 `CLAUDE.md` v2.0 核心協議運行（§1-§5 嚴格三步法 / 防幻覺 / 精準讀寫 / 鋼鐵自省 / 卡關救援）。
