@@ -69,6 +69,7 @@
 | #84 | fix(tab_stock): 殖利率河流圖三條 band 改用逐日 TTM（修水平直線 bug）+ 風控警示卡帶上 asset_type/sid/name 三件套 | 3068494 |
 | #86 | fix(app): `_AppProxy` 取代 `sys.modules.setdefault` — 線上 Streamlit Cloud `__main__` ≠ script module 時 PR #82 失效，改用 ModuleType proxy 轉發 live globals() 徹底解 4 檔 from-app ImportError | 40741be |
 | #88 | fix(app): proxy v2 — globals 從 closure 改塞 `proxy.__dict__['__app_globals__']`，無條件 refresh，徹底解線上 tab_stock 11-name `from app import` 殘留 ImportError | 07a7321 |
+| #90 | fix(tab_stock): 殖利率河流圖 TTM=0 三閃門 — PR #84 後 6770 力積電等個股因合成 ex-div 落未來導致 365D rolling 抓不到 → 河流消失；加 (1) 跳未來事件 (2) fallback 改去年 7/1 (3) 安全網退 avg_div2 橫帶並改 title 標示 | b6f07cc |
 
 ## 🎯 Backlog
 - **環境工**：33 條 stale remote branches 清理（PR #42-#78 累積，sandbox token 無 delete 權）
