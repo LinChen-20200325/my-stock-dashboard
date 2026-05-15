@@ -5304,8 +5304,9 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
 # ══════════════════════════════════════════════════════════════
 # TAB 2: 個股深度分析 + 健康度評分
+# P2-B Phase 4-C: wrap 成 render_tab_stock() 純函式
 # ══════════════════════════════════════════════════════════════
-with tab_stock:
+def render_tab_stock():
     st.markdown('''<div style="background:#0a1628;border:1px solid #1f6feb;border-radius:12px;padding:16px;margin-bottom:12px;">
 <div style="font-size:18px;font-weight:900;color:#58a6ff;margin-bottom:8px;">🔬 個股深度分析 — 這支股票值得買嗎？</div>
 <div style="font-size:13px;color:#c9d1d9;line-height:1.8;">
@@ -5682,7 +5683,6 @@ padding:14px 18px;margin-bottom:12px;">
                     _entry.append(f'✅ 年線負乖離 {_bias_i:+.0f}% → 孫慶龍：左側布局區')
                 # RS 相對強度
                 try:
-                    from scoring_engine import calc_rs_score, rs_slope
                     _rs_val  = calc_rs_score(df2)
                     _rs_up   = rs_slope(df2)
                     _rs_color= '#3fb950' if _rs_val >= 75 else ('#d29922' if _rs_val >= 50 else '#f85149')
@@ -7707,6 +7707,11 @@ padding:10px 14px;font-size:11px;color:#f85149;margin-top:12px;">
 ⚠️ 本手冊整理自各大師公開課程內容，僅供學術研究與教育用途。
 投資涉及風險，任何操作均應自行判斷，盈虧自負。本系統非投資顧問，不構成買賣建議。
 </div>""", unsafe_allow_html=True)
+
+
+with tab_stock:
+    render_tab_stock()
+
 
 # ══════════════════════════════════════════════════════════════
 # TAB 3+4: 比較排行 + 策略手冊（從 v3_20_21 恢復）
