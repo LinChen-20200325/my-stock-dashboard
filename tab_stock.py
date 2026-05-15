@@ -1187,22 +1187,25 @@ padding:12px 16px;margin:8px 0;">
         # ── 估值河流圖（357殖利率河流，逐日 TTM）────────────────────
         if df2 is not None and not df2.empty:
             # ── 1. 將 yearly2 轉成「ex-div 事件序列」（年中 7/1 為合成除息日） ──
+            # 防護：合成日期若 > 今天（如 2026/5 跑時 2026/7/1 在未來），365D rolling
+            # 涵蓋不到 → 整段 TTM 為 0 → 河流消失。跳過所有未來事件。
+            _today_ts = pd.Timestamp(datetime.date.today())
             _riv_events = []
             if yearly2:
                 for _y in yearly2:
                     try:
                         _y_cash = float(_y.get('cash', 0) or 0)
                         if _y_cash > 0:
-                            _riv_events.append({
-                                'date': pd.Timestamp(int(_y['year']), 7, 1),
-                                'div':  _y_cash
-                            })
+                            _ev_dt = pd.Timestamp(int(_y['year']), 7, 1)
+                            if _ev_dt > _today_ts:
+                                continue
+                            _riv_events.append({'date': _ev_dt, 'div': _y_cash})
                     except Exception:
                         pass
-            # 若無逐年資料，用 avg_div2 補一筆當年（提供 fallback 才不至於整張空白）
+            # 若無逐年資料，用 avg_div2 補「去年 7/1」（不是今年——避免落在未來）
             if not _riv_events and avg_div2 and avg_div2 > 0:
                 _riv_events.append({
-                    'date': pd.Timestamp(datetime.date.today().year, 7, 1),
+                    'date': pd.Timestamp(datetime.date.today().year - 1, 7, 1),
                     'div':  float(avg_div2)
                 })
 
@@ -1227,6 +1230,13 @@ padding:12px 16px;margin:8px 0;">
                 _td_only = _all_df[_all_df['kind'] == 'td'].copy()
                 _td_only['ttm'] = _td_only['ttm'].mask(_td_only['ttm'] <= 0).ffill()
                 _ttm_series = pd.to_numeric(_td_only['ttm'], errors='coerce').reset_index(drop=True)
+
+                # ── 安全網：TTM 整段全 0 / NaN（過去 12 月真的沒除息）→ 退回 avg_div2 橫帶 ──
+                _ttm_valid = _ttm_series.dropna()
+                _is_fallback_flat = (_ttm_valid.empty or float(_ttm_valid.max()) <= 0) \
+                    and avg_div2 and avg_div2 > 0
+                if _is_fallback_flat:
+                    _ttm_series = pd.Series([float(avg_div2)] * len(_rdates_riv))
 
                 # ── 3. 計算河流帶：P = TTM 股利 / 殖利率閾值（逐日） ──
                 _band7_riv = (_ttm_series / 0.07).round(2)
@@ -1276,9 +1286,10 @@ padding:12px 16px;margin:8px 0;">
                 _ymax_riv = max(_all_riv_vals) * 1.05 if _all_riv_vals else 100
                 _ymin_riv = max(0, min(_all_riv_vals) * 0.7) if _all_riv_vals else 0
 
+                _div_label = '近5年均股利' if _is_fallback_flat else 'TTM 股利'
                 _fig_riv.update_layout(
                     title=dict(
-                        text=f'📊 {sid2} {name2} 殖利率河流圖（TTM 股利 {_cur_div_riv:.2f}元）',
+                        text=f'📊 {sid2} {name2} 殖利率河流圖（{_div_label} {_cur_div_riv:.2f}元）',
                         font=dict(color='#8b949e', size=12)),
                     height=300, plot_bgcolor='#0e1117', paper_bgcolor='#0e1117',
                     font=dict(color='white', size=11),
@@ -1296,7 +1307,7 @@ padding:12px 16px;margin:8px 0;">
                 st.caption(
                     f'目前位於 {_cur_zone}（現價 {_cur_price_riv:.0f} / '
                     f'便宜≤{_p7r:.0f} / 合理≤{_p5r:.0f} / 昂貴≤{_p3r:.0f}）'
-                    f'　TTM 股利 {_cur_div_riv:.2f}元')
+                    f'　{_div_label} {_cur_div_riv:.2f}元')
                 if _cur_div_riv < 0.5:
                     st.info('ℹ️ 此股近年現金股利極低（< 0.5元），殖利率河流圖參考意義有限，建議搭配本益比等其他估值工具。')
 
