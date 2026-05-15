@@ -9,7 +9,7 @@
 ## 🏗️ 主要模組
 | 層 | 檔案 |
 |---|---|
-| **UI** | `app.py`（主入口，PR #68 後 **9208 行**，4/4 TAB 全 wrap def）· `etf_dashboard.py` · `ui_widgets.py`（PR #60 抽出 8 個純 HTML 函式） |
+| **UI** | `app.py`（主入口，PR #73 後 **1378 行**，−85%，4/4 TAB 已抽至獨立模組）· `tab_macro.py` (4031) · `tab_stock.py` (2456) · `tab_stock_grp.py` (1073) · `tab_edu.py` (401) · `etf_dashboard.py` · `ui_widgets.py`（PR #60 抽出 8 個純 HTML 函式） |
 | **資料抓取** | `data_loader.py` · `macro_core.py`（含 PR #53 `diagnose_tw_pmi_sources`）· `tw_macro.py` · `daily_checklist.py` · `leading_indicators.py` · `tw_stock_data_fetcher.py` |
 | **資料註冊** | `data_registry.py` · `data_config.py` · `config.py` |
 | **引擎** | `scoring_engine.py` · `scoring_helpers.py`（PR #61 抽 3 純函式：fundamental_score / health_score / health_grade）· `financial_health_engine.py` · `market_strategy.py` · `risk_control.py` · `backtest_engine.py` · `unified_decision.py` · `v4_strategy_engine.py` · `v5_modules.py` · `yield_screener.py` |
@@ -24,7 +24,7 @@
 - 設計文件：`ARCHITECTURE.md` · `DATASTATION.md` · `STRATEGY_MANUAL.md`
 - 測試：`test_*.py`
 
-## 🚀 最近完工（PR #42-#68，2026-05）
+## 🚀 最近完工（PR #42-#73，2026-05）
 | PR | 任務 | SHA |
 |---|---|---|
 | #42 | ETF 折溢價 G1+G2 守門員（NAV-Price gap + 主動式 ETF 異常閾值） | c21e577 |
@@ -54,21 +54,29 @@
 | #66 | app.py P2-B Phase 4-A/B/C：wrap 3 個 TAB def + PHASE4_AUDIT.md | d1e9c5a |
 | #67 | docs 同步 PR #65-#66 | dd8afd5 |
 | #68 | app.py P2-B Phase 4-D：wrap tab_macro（4/4 全收官）🏆 | a6dea89 |
+| #69 | docs 同步 PR #67-#68（Phase 4 全收官） | b4c7d92 |
+| #70 | app.py P2-B Phase 5-A：抽 tab_edu.py（387 行） | dc62b90 |
+| #71 | app.py P2-B Phase 5-B：抽 tab_stock_grp.py（1030 行，27 依賴） | d99c19e |
+| #72 | app.py P2-B Phase 5-C：抽 tab_stock.py（2401 行，41 依賴，bonus 清 21 F401） | 877638c |
+| #73 | app.py P2-B Phase 5-D：抽 tab_macro.py（3970 行，44 依賴，bonus 清 33 F401）🏆 收官 | eca00a0 |
 
 ## 🎯 Backlog
-- **環境工**：23 條 stale remote branches 清理（PR #42-#68 累積，sandbox token 無 delete 權）
-- **部署驗證**：PR #42-#68 累積 Streamlit Cloud 上線驗收項目
+- **環境工**：28 條 stale remote branches 清理（PR #42-#73 累積，sandbox token 無 delete 權）
+- **部署驗證**：PR #42-#73 累積 Streamlit Cloud 上線驗收項目（重點：Phase 5 抽 4 TAB 後，每個 tab 都需手動驗證 happy path）
 - **PMI 真實異常**：PR #53 加好診斷工具，下次 PMI 紅燈時用 `🔬 8 段備援源詳細診斷` 按鈕定位根因（proxy 死 / regex 過時 / 端點改版）
-- **P2-B Phase 4 ✅ 全收官（4/4 巨型 TAB wrap def）**：
-  - ✅ P4-A `tab_stock_grp` (1031 行) → `render_stock_grp()` — PR #66
-  - ✅ P4-B `tab_edu` (387 行) → `render_tab_edu()` — PR #66
-  - ✅ P4-C `tab_stock` (2402 行) → `render_tab_stock()` — PR #66
-  - ✅ P4-D `tab_macro` (3970 行) → `render_tab_macro()` — PR #68
+- **P2-B Phase 5 ✅ 全收官（4/4 TAB 抽至獨立 .py 模組）**：
+  - ✅ P5-A `tab_edu.py` (387 行 / 1 依賴) — PR #70
+  - ✅ P5-B `tab_stock_grp.py` (1030 行 / 27 依賴) — PR #71
+  - ✅ P5-C `tab_stock.py` (2401 行 / 41 依賴) — PR #72
+  - ✅ P5-D `tab_macro.py` (3970 行 / 44 依賴) — PR #73
 - **技術債（已全面清乾淨）**：
   - 🎯 `app.py` ruff errors **681 → 0（100% clean）**（PR #56/#57/#60/#63/#64）
-  - `app.py` 9622 → **9208 行**（−414，−4.3%，PR #58/#60/#61 抽函式 + #66/#68 wrap 4 TAB def）
+  - `app.py` 9622 → **1378 行**（**−8244，−85.7%**，PR #58/#60/#61 抽純函式 + #66/#68 wrap def + #70/#71/#72/#73 抽 4 TAB）
   - `etf_dashboard.py` 3122 行
-- **Phase 5 候選**（低風險）：將 `render_tab_xxx()` 4 個函式逐一抽到獨立 .py 模組（tab_macro.py / tab_stock.py / tab_stock_grp.py / tab_edu.py），預估 app.py 可瘦身至 ~1500 行
+- **Phase 6 候選**（可選）：
+  - `etf_dashboard.py` 3122 行精簡（同樣模式：抽出長函式至獨立模組）
+  - tab_*.py 模組內部進一步抽純函式（如各 TAB 共用的 helper）
+  - 補測試：`tests/test_tab_*.py` 個別 mock 化測試
 
 ## 🧱 開發協議
 依 `CLAUDE.md` v2.0 核心協議運行（§1-§5 嚴格三步法 / 防幻覺 / 精準讀寫 / 鋼鐵自省 / 卡關救援）。

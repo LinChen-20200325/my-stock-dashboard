@@ -1,6 +1,6 @@
 # 台股 AI 戰情室 — 技術規格書
 
-> **版本**：v6.8　|　**最後更新**：2026-05-15　|　**狀態**：完成 ✅
+> **版本**：v7.0　|　**最後更新**：2026-05-15　|　**狀態**：完成 ✅
 >
 > 本文件為系統架構師視角的唯讀規格書，不含任何實作程式碼。
 
@@ -791,7 +791,63 @@ ETF 回測子頁（render_etf_backtest）額外流程：
 
 ---
 
-#### `app.py` 結構演進（PR #66 + #68 — P2-B Phase 4 全收官 ✅）
+#### `app.py` 結構演進（PR #66/#68/#70-#73 — P2-B Phase 4+5 全收官 ✅✅）
+
+**最終戰績**：app.py 9622 → **1378 行（−85.7%）**，4 個 TAB 全部抽到獨立 `.py` 模組。
+
+| 模組 | 行數 | 角色 | PR |
+|---|---|---|---|
+| `tab_macro.py` | 4031 | 總經紅綠燈 + 多指標儀表板（44 依賴 late import） | #73 |
+| `tab_stock.py` | 2456 | 個股深度分析 + 健康度評分（41 依賴 late import） | #72 |
+| `tab_stock_grp.py` | 1073 | 比較 × 排行 / 多股批次分析（27 依賴 late import） | #71 |
+| `tab_edu.py` | 401 | 教學說明書 / 指標解讀手冊（1 依賴） | #70 |
+
+**Phase 5 依賴策略**：
+- **Top-level**：僅 `import streamlit as st`
+- **函式內 late import**：所有其他依賴（stdlib / 外部模組 / app.py 內部 helper）
+- **循環 import 風險**：tab_xxx.py 與 app.py 互相 import；由 late import inside function 完美解決（呼叫時 app 模組已完整載入）
+
+**app.py 內部 helper 跨檔使用統計（從各 tab_*.py late import）**：
+
+| Helper | tab_macro | tab_stock | tab_stock_grp | tab_edu |
+|---|---|---|---|---|
+| `gemini_call` | ✅ | ✅ | ✅ | — |
+| `_fetch_stock_news` | — | ✅ | ✅ | — |
+| `_fetch_macro_news` | ✅ | — | — | — |
+| `fetch_*` 系列 (price/dividend/financials/quarterly/revenue) | — | ✅ | ✅ | — |
+| `_get_loader` / `_load_cache` / `_save_cache` | — | — | ✅ | — |
+| `_bps` / `_tw_now_str` / `_get_fm_token` | ✅ | — | — | — |
+| `generate_ai_comment` / `render_health_score` | — | ✅ | — | — |
+| `parse_stocks` | — | — | ✅ | — |
+| `api_key` | — | ✅ | — | — |
+
+**`with tab_xxx:` dispatch 模式**：
+
+```python
+# app.py（極簡呼叫端）
+from tab_macro import render_tab_macro
+from tab_stock import render_tab_stock
+from tab_stock_grp import render_stock_grp
+from tab_edu import render_tab_edu
+
+with tab_macro:
+    render_tab_macro()
+with tab_stock:
+    render_tab_stock()
+with tab_stock_grp:
+    render_stock_grp()
+with tab_edu:
+    render_tab_edu()
+```
+
+**前置審計**：`PHASE4_AUDIT.md`（141 行）— AST-based cross-TAB leak scan，0 真實洩漏，動工綠燈。
+
+**已清除死碼總計**：
+- P4: `cx4` (tab_stock_grp) + redundant `from scoring_engine import calc_rs_score, rs_slope` (tab_stock)
+- P5-C: ruff 自動清掉 21 個 F401 (chart_plotter / tech_indicators / scoring_helpers / scoring_engine / ui_widgets 等)
+- P5-D: ruff 自動清掉 33 個 F401 (macro_state_locker / v4_strategy_engine / daily_checklist / macro_alert / market_strategy / leading_indicators / ui_widgets 等)
+
+#### `app.py` Phase 4 wrap def 紀錄（已並入 Phase 5，僅供歷史參考）
 
 **動機**：將 module-level `with tab_xxx:` 巨型區塊包成 `render_<tab>()` 純函式，達成：
 1. **scope 隔離**：消除跨 TAB 變數隱性洩漏風險
