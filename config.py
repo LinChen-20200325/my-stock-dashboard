@@ -127,3 +127,19 @@ MACRO_ALERT_RULES: list = [
     },
 ]
 
+
+# ── Secrets / API Tokens ─────────────────────────────────────
+# FINMIND_TOKEN：優先讀 Streamlit secrets，否則 fallback 到環境變數。
+# 由 tab_stock.py / tab_stock_grp.py 等模組統一從這裡 import，
+# 避免各檔重複貼 secrets+env 的 fallback 樣板。
+import os as _os  # noqa: E402
+try:
+    import streamlit as _st  # noqa: E402
+    try:
+        _t = (getattr(_st, 'secrets', None) or {}).get('FINMIND_TOKEN', '')
+    except Exception:
+        _t = ''
+    FINMIND_TOKEN = _t or _os.environ.get('FINMIND_TOKEN', '')
+except ImportError:
+    FINMIND_TOKEN = _os.environ.get('FINMIND_TOKEN', '')
+
