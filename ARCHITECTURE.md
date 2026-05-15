@@ -742,6 +742,23 @@ ETF 回測子頁（render_etf_backtest）額外流程：
 
 ### 4.2 L2 評分層
 
+#### `tech_indicators.py`（PR #58 新增 — 從 app.py 抽出）
+
+**設計原則**：純技術指標計算，**零 Streamlit / 零 session state 依賴**，可在 CLI / pytest 環境直接 import。輸入皆為 `pandas.DataFrame`（必含 `close / high / low / volume` 欄位），失敗統一回 `None`（不丟例外）。
+
+| 函式 | 簽名 | 用途 |
+|---|---|---|
+| `calc_rsi` | `(df, period=14) -> float \| None` | 相對強弱指標 RSI |
+| `calc_ibs` | `(df) -> float \| None` | 內部強度 `(Close-Low)/(High-Low)` |
+| `calc_volume_ratio` | `(df, period=5) -> float \| None` | 量比 = 今日量 / N 日均量 |
+| `calc_kd` | `(df, period=9) -> tuple[float, float] \| (None, None)` | KD 隨機指標（EMA 平滑） |
+| `calc_bollinger` | `(df, window=20, mult=2) -> dict \| None` | 布林通道（含 `upper/lower/ma/bw/near_upper`） |
+| `calc_vcp` | `(df, n_swings=3) -> dict \| None` | Volatility Contraction Pattern |
+
+**呼叫端**：`app.py:594` 統一 import，於 L5704-5709（個股深度分析）+ L8169-8174（比較排行）使用。
+
+---
+
 #### `scoring_engine.py`
 
 ---
