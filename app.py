@@ -8750,8 +8750,9 @@ with tab_stock_grp:
 
 # ══════════════════════════════════════════════════════════════
 # TAB 教學：策略邏輯說明書（靜態 Markdown）
+# P2-B Phase 4-B: wrap 成 render_tab_edu() 純函式
 # ══════════════════════════════════════════════════════════════
-with tab_edu:
+def render_tab_edu():
     st.markdown('## 📚 台股 AI 戰情室 — 策略邏輯說明書')
     st.caption('整理自各大師公開課程，僅供學術研究。投資涉及風險，本系統不構成買賣建議，盈虧自負。')
 
@@ -9138,6 +9139,11 @@ padding:10px 14px;font-size:11px;color:#8b949e;margin-top:8px;text-align:center;
 ⚠️ 本教學整理自各大師公開課程內容，僅供學術研究與教育用途。<br>
 投資涉及風險，任何操作均應自行判斷，盈虧自負。本系統非投資顧問，不構成買賣建議。
 </div>""", unsafe_allow_html=True)
+
+
+with tab_edu:
+    render_tab_edu()
+
 
 # ══════════════════════════════════════════════════════════════
 # TAB: ETF 單一深度診斷
