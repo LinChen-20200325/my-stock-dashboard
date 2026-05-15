@@ -8,6 +8,14 @@ import requests
 import json
 import pickle
 import hashlib
+import sys
+
+# ── Streamlit Cloud 防護 ─────────────────────────────────
+# 當 tab_*.py 從 `app` import helper 時，把當前執行中的 __main__
+# 模組註冊為 'app'，避免 Python 把 app.py 當成新 module 重新執行
+# （否則會在第二次跑 st.set_page_config 時觸發
+#  StreamlitSetPageConfigMustBeFirstCommandError）
+sys.modules.setdefault('app', sys.modules[__name__])
 
 # ── 台灣時間（UTC+8）─────────────────────────────────────
 _TW_TZ = datetime.timezone(datetime.timedelta(hours=8))
