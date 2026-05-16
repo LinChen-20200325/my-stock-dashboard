@@ -75,11 +75,21 @@
 | #96 | feat(tab_stock): 新增本益比 (PE) + 股價淨值比 (PB) 河流圖（殖利率河流圖之後）。PE 用 qtr2['EPS'] 4Q rolling sum + asof 對應公告生效日（季末+60天）避免穿越；三組閾值 selectbox 切換（通用 10/15/20、保守 8/12/16 景氣循環、成長 12/18/25）；TTM EPS≤0 虧損股 warning 不畫帶。PB 從 yfinance bookValue 取最新值畫橫帶（0.8/1.5/2.5），雙後綴 .TW/.TWO 重試 | 55f7f2f |
 | #98 | refactor(etf): 移除「AI ETF 存股決策總結」與 AI 首席顧問決策中心併軌（兩者功能重疊都做 BIAS240+KD+殖利率三維判讀）。刪 _etf_ai_hokei() 函數 98 行 + 順手清 3 個 pre-existing dead imports（render_unified_decision/calc_stats/re as _re2） | 2350d72 |
 | #99 | feat(etf): ETF 組合 4 分頁整合為 1 + 持股資產追蹤改造。Phase A：app.py 移除內嵌 tab，改 tab_etf_grp 順序呼叫 4 個 render + hr 分隔線。Phase B：輸入格式 `代號,目標權重%,現值元` → `代號,股數,均價[,希望比例%][,類型]`；新增自動計算現價/現值/成本/資本利得/已領配息（近1年除息×股數）/總損益；資產總覽卡 5 大 metric；批次抓現價並 dedup 下游再平衡 fetch 迴圈 | b6e4562 |
+| #101 | refactor(etf): 葡萄串改用持股 + AI 移到最底（單一輸入來源）。etf_tab_portfolio 把 rows 存 session_state['etf_portfolio_rows']；grape_ladder _render_evaluate_subtab 移除自己的 text_area，改讀 session_state 用真實股數估算月配息；app.py 順序改 組合配置→回測→葡萄串→AI（壓軸避免 anchor bias） | 19f0052 |
+| #102 | refactor(grape): 「評估我的組合」拉到主頁面，系統提議改 expander 折疊。子 tab 結構展平，主視圖直接顯示「評估我的組合」（讀組合配置持股），「系統提議」（高股息 10 檔挑選）改 st.expander 預設收起 | c4fcb41 |
+| #103 | refactor(etf): 回測也共用持股組合（單一輸入來源全面收斂）。移除 etf_tab_backtest 的 text_area，改讀 session_state['etf_portfolio_rows']；新增 radio 切換「希望比例%（規劃驗證）/ 現值比例%（實況回放）」做回測權重。ETF 組合 tab 全頁面唯一輸入來源達成 | 3204666 |
+| #104 | feat(diag): 資料診斷新增 ETF 組合「逐檔個別判斷」。health_inspector ETF Raw Data expander 內加 N×2 行（每檔現價+配息），三態探測：海外 ETF 配息標 ⚪ na、台股無配息標 🔵 zero、現價失敗標 🔴；所有 rows 加入底部異常清單彙總 | f82c121 |
 
 ## 🎯 Backlog
 - **環境工**：33 條 stale remote branches 清理（PR #42-#78 累積，sandbox token 無 delete 權）
 - **部署驗證**：PR #42-#78 累積 Streamlit Cloud 上線驗收項目（重點：Phase 5 + Phase 6 共抽出 8 個 tab/render 模組，每個都需手動驗證 happy path）
 - **PMI 真實異常**：PR #53 加好診斷工具，下次 PMI 紅燈時用 `🔬 8 段備援源詳細診斷` 按鈕定位根因（proxy 死 / regex 過時 / 端點改版）
+- **ETF 組合單一輸入來源 ✅ 全收斂（PR #99→#101→#102→#103→#104）**：
+  - ✅ 組合配置（唯一輸入：股數+均價+希望比例%+類型）
+  - ✅ 葡萄串領息法（自動讀持股，真實股數估月配息）
+  - ✅ 歷史回測（radio 切希望/現值比例）
+  - ✅ AI 綜合評斷（自由提問，整合上方分析）
+  - ✅ 資料診斷（逐檔現價+配息三態探測）
 - **P2-B Phase 5 ✅ 全收官（4/4 app.py TAB 抽至獨立 .py 模組）**：
   - ✅ P5-A `tab_edu.py` (387 行 / 1 依賴) — PR #70
   - ✅ P5-B `tab_stock_grp.py` (1030 行 / 27 依賴) — PR #71
