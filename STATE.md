@@ -95,9 +95,10 @@
 | (同上) | refactor: Phase 7F — 抽 `ui_widgets.cond_badge(ok, label)` — tab_macro.py 五維點火條件徽章 closure（HTML span，True 綠 / False 灰）；3 行 closure 刪除 + 7 callsite 重接；新增 `tests/test_ui_widgets.py` 8 cases；全套件 **574/574 全綠** | fde8047 |
 | (同上) | test: Phase 7G — `ui_widgets.py` PR #60 既有 9 函式 + 1 常數補完單元測試（TERM_EXPLAIN / explain_box / traffic_light / beginner_kpi / show_term_help / kpi / _to_strategy / teacher_box / teacher_conclusion / signal_box），零生產碼變動；+63 unit test，全套件 **637/637 全綠** | 114f17f |
 | (同上) | test: Phase 7H — `tech_indicators.py` (PR #58) + `scoring_helpers.py` (PR #61) 9 純函式補完單元測試（calc_rsi / calc_ibs / calc_volume_ratio / calc_kd / calc_bollinger / calc_vcp + calc_fundamental_score / calc_health_score / health_grade），零生產碼變動；+97 unit test，全套件 **734/734 全綠** | 8b26a13 |
+| (同上) | chore: 產出 `cleanup_stale_branches.sh` — 49 條 stale 遠端分支清理腳本（48 merged 主清單 + 2 unmerged opt-in 區段）；含 DRY_RUN 預設、白名單保護（main / 當前分支）、刪前重新驗證 ancestor of origin/main；對應 STATE.md Backlog「環境工」條目 | (本輪) |
 
 ## 🎯 Backlog
-- **環境工**：33 條 stale remote branches 清理（PR #42-#78 累積，sandbox token 無 delete 權）
+- **環境工**：49 條 stale remote branches 清理 → ✅ 產出 `cleanup_stale_branches.sh`（48 merged 主清單 + 2 unmerged opt-in），預設 DRY_RUN=1；sandbox HTTP 403 擋 push --delete，需本機 clone 後 `DRY_RUN=0 ./cleanup_stale_branches.sh` 執行
 - **部署驗證**：PR #42-#78 累積 Streamlit Cloud 上線驗收項目（重點：Phase 5 + Phase 6 共抽出 8 個 tab/render 模組，每個都需手動驗證 happy path）
 - **PMI 真實異常**：PR #53 加好診斷工具，下次 PMI 紅燈時用 `🔬 8 段備援源詳細診斷` 按鈕定位根因（proxy 死 / regex 過時 / 端點改版）
 - **ETF 組合單一輸入來源 ✅ 全收斂（PR #99→#101→#102→#103→#104）**：
