@@ -9,7 +9,8 @@
 ## 🏗️ 主要模組
 | 層 | 檔案 |
 |---|---|
-| **UI** | `app.py`（主入口，PR #73 後 **1378 行**，−85%，4/4 TAB 已抽至獨立模組）· `tab_macro.py` (4031) · `tab_stock.py` (2456) · `tab_stock_grp.py` (1073) · `tab_edu.py` (401) · `etf_dashboard.py`（PR #78 後 **1667 行**，−47%，4/4 ETF render 已抽出）· `etf_tab_single.py` (616) · `etf_tab_portfolio.py` (531) · `etf_tab_backtest.py` (284) · `etf_tab_ai.py` (169) · `ui_widgets.py`（PR #60 抽出 8 個純 HTML 函式） |
+| **UI** | `app.py`（主入口，PR #73 後 **1378 行**，−85%，4/4 TAB 已抽至獨立模組）· `tab_macro.py` (4031) · `tab_stock.py` (2521) · `tab_stock_grp.py` (1073) · `tab_edu.py` (401) · `etf_dashboard.py`（Phase 7C 後 **49 行 shim**，−97%，三層全拆）· `etf_tab_single.py` (616) · `etf_tab_portfolio.py` (531) · `etf_tab_backtest.py` (284) · `etf_tab_ai.py` (169) · `ui_widgets.py`（PR #60 抽出 8 個純 HTML 函式） |
+| **ETF 三層** | `etf_fetch.py` (572 / Phase 7C 純 I/O：價格 / 配息 / NAV / 費用率 / 類股漲跌 / 新聞) · `etf_calc.py` (465 / 純算：殖利率 / 總報酬 / 折溢價 / 風險指標 / 同儕排名 / 戰情室列) · `etf_render.py` (505 / Streamlit UI：橫幅 / 走勢 / BIAS / 蒙地卡羅 / 類股熱力圖) |
 | **資料抓取** | `data_loader.py` · `macro_core.py`（含 PR #53 `diagnose_tw_pmi_sources`）· `tw_macro.py` · `daily_checklist.py` · `leading_indicators.py` · `tw_stock_data_fetcher.py` |
 | **資料註冊** | `data_registry.py` · `data_config.py` · `config.py` |
 | **引擎** | `scoring_engine.py` · `scoring_helpers.py`（PR #61 抽 3 純函式：fundamental_score / health_score / health_grade）· `financial_health_engine.py` · `market_strategy.py` · `risk_control.py` · `backtest_engine.py` · `unified_decision.py` · `v4_strategy_engine.py` · `v5_modules.py` · `yield_screener.py` |
@@ -83,6 +84,8 @@
 | (同上) | fix(tab_stock_grp): 批次分析空 K 線改為標記 error 並跳過快取（修「🔴 未取得」靜默失敗） | 26da8fb |
 | (同上) | fix(etf): 私募/特殊 ETF 三項全空時改判 na（⚪不適用）— AUM+費用率+NAV 啟發式 | c3250d7 |
 | (同上) | fix(macro): TW PMI 8 段備援補上每段失敗原因追蹤（無回應 / HTTP 狀態碼） | 8d3fb71 |
+| (同上) | refactor(etf): Phase 7C 三層分檔 — etf_dashboard 1667 → 49 行 shim；新增 etf_fetch / etf_calc / etf_render 共 1542 行；40 個 symbol 全 re-export，6 個下游 importer 零修改 | 44a0e87 |
+| (同上) | feat(tab_stock): Phase 7D — 停利停損面板下方新增關鍵價位 K 線圖（K + 量 + MA20/MA100 + 9 條 add_hline 水平線：停利 1/2、減碼/硬停損、支撐/壓力、月線停損、5MA、初步目標、加碼點） | 461d465 |
 
 ## 🎯 Backlog
 - **環境工**：33 條 stale remote branches 清理（PR #42-#78 累積，sandbox token 無 delete 權）
@@ -104,15 +107,19 @@
   - ✅ P6-B `etf_tab_portfolio.py` (496 行 / 14 依賴) — PR #76
   - ✅ P6-C `etf_tab_backtest.py` (243 行 / 13 依賴) — PR #77
   - ✅ P6-D `etf_tab_ai.py` (146 行 / 5 依賴) — PR #78
+- **P2-B Phase 7C ✅ 收官（etf_dashboard 三層全拆）**：
+  - ✅ 7C `etf_fetch.py` (572 行 / 純 I/O，0 內部依賴) + `etf_calc.py` (465 行 / 純算，依賴 etf_fetch) + `etf_render.py` (505 行 / Streamlit UI，依賴 etf_fetch) — commit `44a0e87`
+  - ✅ `etf_dashboard.py` 由 1667 → **49 行 shim**（re-export 40 個 symbol + 4 個 tab 入口），6 個下游 importer (app / etf_quality / grape_ladder / 4 個 etf_tab_*) 零修改
+  - ✅ 7D `tab_stock.py` 停利停損面板 K 線圖 +9 條水平線（+65 行）— commit `461d465`
 - **技術債（已全面清乾淨）**：
   - 🎯 `app.py` ruff errors **681 → 0（100% clean）**（PR #56/#57/#60/#63/#64）
   - `app.py` 9622 → **1378 行**（**−8244，−85.7%**，PR #58/#60/#61 抽純函式 + #66/#68 wrap def + #70-#73 抽 4 TAB）
-  - `etf_dashboard.py` 3122 → **1667 行**（**−1455，−46.6%**，PR #75-#78 抽 4 render + 順手清 55+ 個風格債）
-  - **兩大入口檔合計** 12744 → **3045 行**（**−9699，−76%**）
-- **Phase 7 候選**（可選）：
-  - 各 tab_*.py / etf_tab_*.py 模組內部進一步抽純函式（如各 TAB 共用的 helper）
-  - 補測試：`tests/test_tab_*.py` / `tests/test_etf_tab_*.py` 個別 mock 化測試
-  - `etf_dashboard.py` 剩餘 1667 行內部 36 個 helper 函式進一步分檔（fetch/calc/render 分層）
+  - `etf_dashboard.py` 3122 → **49 行 shim**（**−3073，−98.4%**，PR #75-#78 抽 4 render + Phase 7C 三層全拆）
+  - **兩大入口檔合計** 12744 → **1427 行**（**−11317，−88.8%**）
+- **Phase 7 剩餘候選**（可選）：
+  - 7A：各 tab_*.py / etf_tab_*.py 模組內部進一步抽純函式（如各 TAB 共用 helper）
+  - 7B：補測試 `tests/test_tab_*.py` / `tests/test_etf_tab_*.py` 個別 mock 化測試
+  - C：`test_financial_health_engine.py::TestNoAiSurvivalBItem` 4 個 pre-existing 紅燈（與 ETF 重構無關，需另查）
 
 ## 🧱 開發協議
 依 `CLAUDE.md` v2.0 核心協議運行（§1-§5 嚴格三步法 / 防幻覺 / 精準讀寫 / 鋼鐵自省 / 卡關救援）。

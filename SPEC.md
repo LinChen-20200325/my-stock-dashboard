@@ -81,9 +81,39 @@ _likely_private = (
 
 ---
 
-## §5 文件治理連動
+## §5 etf_dashboard 三層職責邊界（Phase 7C — commit `44a0e87`）
 
-任何 §1–§4 規約變更必須同步：
+> 來源：`etf_dashboard.py` 拆分為 `etf_fetch` / `etf_calc` / `etf_render` 三層。下游 6 個 importer (app / etf_quality / grape_ladder / 4 個 etf_tab_*) 一律 `from etf_dashboard import ...` 不變；新程式碼建議直接 import 對應子模組。
+
+**依賴方向**（葉節點 → 上層，反向禁止）：
+
+```
+etf_fetch  ←  etf_calc  ←  etf_render  ←  etf_dashboard (shim)
+```
+
+| 層 | 模組 | 可放函式類型 | 禁止 |
+|---|---|---|---|
+| L1 純 I/O | `etf_fetch.py` | 對外 API 抓資料（yfinance / FinMind / SITCA / MoneyDJ / goodinfo / TWSE）、本地常數表（如 `_TW_ETF_LAUNCH_PRICE`）、檔位驗證 (`_safe_float` / `_NAV_MIN/MAX`) | 任何 `st.markdown` / `plotly` / 數值計算邏輯（除驗證外） |
+| L2 純算 | `etf_calc.py` | 殖利率 / 總報酬 / 折溢價 / 風險指標 / 同儕排名 / 戰情室列；可呼叫 `etf_fetch.*` 取資料後計算 | 任何 `st.plotly_chart` / `st.markdown` UI 渲染 |
+| L3 UI | `etf_render.py` | Streamlit / Plotly 渲染 (`_plot_etf_chart` / `_render_bias` / `_render_monte_carlo` / `render_sector_heatmap`)；呼叫 `etf_fetch` 取輕量 I/O（news / sector returns）；`ui_widgets._to_strategy` 一律 late import | 重新發明 `etf_calc` 已有的數值邏輯；直接呼叫外部 API（請走 `etf_fetch`） |
+| L4 Shim | `etf_dashboard.py` | 純 re-export — 40 個 symbol + 4 個 tab 入口 | 新增任何邏輯（破壞 shim 純粹性）|
+
+**判定邊界 case**：
+- `_compute_etf_warroom_row` 混 fetch + calc → 放 **L2** (calc 可依賴 fetch，反向不可)
+- `_safe_float` / NAV 常數 → 放 **L1** (與 NAV 解析配套，calc 層也可用)
+- `_fetch_sector_returns` 含 `st.warning` → 仍放 **L1** (本質是 I/O，warning 為 cache miss 提示)
+- `_teacher_conclusion` 用到 `ui_widgets._to_strategy` → 放 **L3**，採 late import 解循環風險
+
+**新增 helper 流程**：
+1. 看依賴：純抓資料 → L1；只算數字 → L2；產出 Streamlit element → L3
+2. 寫好 helper 後在對應子模組頂部加 `__all__` 或直接 `from etf_xxx import ...` 至 `etf_dashboard.py` shim
+3. 若供下游使用，務必 re-export 到 `etf_dashboard.py`（避免改下游 6 個 importer）
+
+---
+
+## §6 文件治理連動
+
+任何 §1–§5 規約變更必須同步：
 - `STATE.md` — 加入 commit / PR 行
 - `ARCHITECTURE.md` — 對應模組章節
 - `SPEC.md`（本檔） — 直接更新對應表 / 啟發式

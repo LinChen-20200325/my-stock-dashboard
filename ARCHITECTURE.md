@@ -98,7 +98,10 @@ my-stock-dashboard/
 | 檔案 | 行數 | 職責 |
 |------|-----:|------|
 | `chart_plotter.py` | ~574 | Plotly 5 子圖（K 線 + 成交量 + 外資 + 投信 + 自營/融資）、月營收趨勢圖、季度財務圖 |
-| `etf_dashboard.py` | ~2,263 | ETF 四子頁（診斷/組合/回測/AI）；NAV 折溢價、年線乖離率、VCP、追蹤誤差、蒙地卡羅模擬、板塊熱力圖 |
+| `etf_dashboard.py` | 49 | Phase 7C 後：純 re-export shim；維持 6 個下游 importer 既有 `from etf_dashboard import ...` 不變 |
+| `etf_fetch.py` | 572 | Phase 7C 新增 — 純 I/O 層：價格 / 配息 / 基本資訊 / 費用率 (SITCA/MoneyDJ) / NAV 5 源備援 / 類股漲跌 / 新聞 |
+| `etf_calc.py` | 465 | Phase 7C 新增 — 純計算層：殖利率 / 總報酬 / 折溢價 G1-G3 守門員 / 風險指標 (TE/MDD/CAGR/Sharpe) / 同儕排名 / 戰情室列 |
+| `etf_render.py` | 505 | Phase 7C 新增 — Streamlit UI 層：MACRO 配置橫幅 / 走勢圖 / BIAS / 蒙地卡羅 / 類股熱力圖 |
 
 #### AI 層
 
@@ -277,7 +280,7 @@ bear（空頭）  15%     10%     15%     15%     25%     20%
 | 模組 | 渲染目標 | 依賴層 |
 |------|---------|--------|
 | `chart_plotter.py` | 個股 K 線 5 子圖、月營收、季度財務 | L1、L2 |
-| `etf_dashboard.py` | ETF 四子頁（診斷/組合/回測/AI） | L1、L2、L3、L5 |
+| `etf_dashboard.py` | ETF 四子頁 Public API shim（Phase 7C 後 49 行 re-export）；實際邏輯下沉至 `etf_fetch` (L1) / `etf_calc` (L2) / `etf_render` (L4) | L1、L2、L3、L5 |
 | `daily_checklist.py` (UI 部分) | 共用 UI 元件（`section_header`、`kpi`、`sparkline`） | L1 |
 
 **設計原則**：
@@ -828,6 +831,69 @@ ETF 回測子頁（render_etf_backtest）額外流程：
 - P6-B: 1 個 E701
 - P6-C: 10 個 E701/E702
 - P6-D: 8 個 F541
+
+#### `etf_dashboard.py` 三層分檔（commit `44a0e87` — P2-B Phase 7C 收官 ✅）
+
+**最終戰績**：etf_dashboard.py 1667 → **49 行 shim（−97.1%）**，36 個內部 helper 全部下沉到 3 個按職責分離的子模組。
+
+| 模組 | 行數 | 角色 | 依賴 |
+|---|---|---|---|
+| `etf_fetch.py` | 572 | 純 I/O：價格 / 配息 / 基本資訊 / 費用率 (SITCA→MoneyDJ→yfinance 3 源備援) / NAV (FinMind→goodinfo→TWSE→MoneyDJ→yfinance 5 源備援+stale fallback) / 類股漲跌 / 新聞 | streamlit + pandas + yfinance（**零內部依賴**） |
+| `etf_calc.py` | 465 | 純算：殖利率 / 總報酬 / 折溢價 G1-G3 守門員 / 風險指標 (TE/MDD/CAGR/Sharpe) / VCP / 同儕排名 / `_compute_etf_warroom_row` | `etf_fetch` |
+| `etf_render.py` | 505 | Streamlit UI：MACRO_ALLOC 配置橫幅 / 走勢圖 / BIAS / 蒙地卡羅 / 類股熱力圖 / `_teacher_conclusion` / `_check_sector_exposure` | `etf_fetch`（只取 `_fetch_news_for` / `_fetch_sector_returns`） |
+| `etf_dashboard.py` | 49 | Public API shim — re-export 40 個 symbol + 4 個 tab 入口 | 上述 3 檔 + 4 個 etf_tab_*.py |
+
+**Phase 7C 依賴方向**：
+
+```
+   etf_fetch  (葉節點 / 純 I/O)
+       ↑
+   etf_calc   (依賴 etf_fetch)
+       ↑
+   etf_render (依賴 etf_fetch)
+       ↑
+ etf_dashboard.py  (re-export shim)
+       ↑
+ 6 個下游 importer (app / etf_quality / grape_ladder / etf_tab_*)
+```
+
+**關鍵設計決策**：
+- `_compute_etf_warroom_row` 雖混 fetch + calc，仍歸 `etf_calc`（calc 可依賴 fetch，反向不可）
+- `_safe_float` / `_NAV_MIN` / `_NAV_MAX` 留 `etf_fetch`（NAV 解析配套）
+- `_fetch_sector_returns` 留 `etf_fetch`（雖含 st.warning，但本質仍是 I/O）
+- `_teacher_conclusion` 內部對 `ui_widgets._to_strategy` 採 late import，避免 render 直接依賴
+
+**驗證結果**：
+- ✅ py_compile 4 檔全綠
+- ✅ 40 個 re-export symbol import 驗證通過
+- ✅ 6 個下游 importer (app / etf_quality / grape_ladder / etf_tab_single / etf_tab_portfolio / etf_tab_backtest / etf_tab_ai) 零修改載入成功
+- ✅ pytest 469 pass / 4 unrelated fail（與 ETF 無關，financial_health_engine 既有問題）
+
+#### `tab_stock.py` 停利停損面板 K 線圖（commit `461d465` — Phase 7D）
+
+**動機**：「停利停損建議 + 近期支撐壓力」面板僅有數字 metric，使用者需手動腦補價位在 K 線的相對位置。新增精簡 K 線圖直接視覺化所有關鍵價位。
+
+**位置**：`tab_stock.py:507-570`（緊接 `_sig_cols[2]` 目標+停損段之後，原 F 段 5-row 完整圖保持不動）。
+
+**結構**：
+- Plotly subplots 2 rows（價 78% / 量 22% 共享 x 軸）
+- 近 180 個交易日，MA20 (粉紅) + MA100 (青)
+- 9 條 add_hline 水平線（每條有顏色 + 虛線樣式 + 左上角價位標籤）：
+
+| 線 | 來源變數 | 顏色 | 樣式 |
+|---|---|---|---|
+| 停利 2 (+10%) | `_tp2_p` | #58a6ff | dash |
+| 停利 1 (+5%) | `_tp1_p` | #3fb950 | dash |
+| 壓力 (20D high) | `_hi20_p` | #f0883e | dot |
+| 初步目標（1:1對稱） | `_target1` | #2ea043 | dashdot |
+| 5MA 停利 | `_ma5` | #FFD700 | solid |
+| 支撐 (20D low) | `_lo20_p` | #1f6feb | dot |
+| 月線停損 | `_sl_ma20` | #8b949e | dot |
+| 停損 (-8%) | `_sl_p` | #f85149 | dash |
+| 硬停損 (-7%) | `_sl_hard` | #a40e26 | dashdot |
+| 加碼點（條件性） | `_add_pt` | #a371f7 | dashdot |
+
+**邊界處理**：try/except 包覆；`_add_pt` 用 `locals().get()` 防 NameError；MA 欄位缺失即時 rolling 補算；y ≤ 0 時不畫線。
 
 #### `app.py` 結構演進（PR #66/#68/#70-#73 — P2-B Phase 4+5 全收官 ✅✅）
 
