@@ -181,7 +181,7 @@ def render_yield_screener():
     with _f1:
         _min_yield = st.slider(
             '最低殖利率 (%)', 0.0, 15.0, 7.0, 0.5,
-            help='只列出殖利率 ≥ 此門檻的標的（預設 7%，孫慶龍存股甜甜價）',
+            help='只列出殖利率 ≥ 此門檻的標的（預設 7%，存股甜甜價區間）',
             key='ys_min_yield')
     with _f2:
         _max_pe = st.slider(

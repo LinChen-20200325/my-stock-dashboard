@@ -367,7 +367,7 @@ padding:14px 18px;margin-bottom:12px;">
         st.markdown('#### 🎯 什麼時候買？什麼時候賣？')
         st.markdown(
             '<div style="background:#0a1628;border-left:3px solid #58a6ff;padding:8px 12px;'            'border-radius:0 6px 6px 0;margin-bottom:8px;font-size:12px;color:#c9d1d9;">'
-            '💡 系統自動幫你檢查<b>多位老師的進出場條件</b>，符合越多條件越可靠。'
+            '💡 系統自動幫你檢查<b>多套策略的進出場條件</b>，符合越多條件越可靠。'
             '<br>🔵 <b>進場訊號</b>：這些條件出現代表可以考慮買進'
             '<br>🔴 <b>出場訊號</b>：這些條件出現代表要考慮賣出或減碼'
             '<br>🎯 <b>目標價</b>：預計可以獲利的目標 | 🛑 <b>停損</b>：跌到這裡要認賠出場'
@@ -421,13 +421,13 @@ padding:14px 18px;margin-bottom:12px;">
                 if _bull_align:
                     _entry.append('✅ 多頭排列（股>月>季）→ 朱家泓：可進場方向')
                 if _vcp_ok:
-                    _entry.append('✅ VCP波幅收縮 → 妮可：即將突破，建底倉30-50%')
+                    _entry.append('✅ VCP波幅收縮 → 策略3：即將突破，建底倉30-50%')
                 if k2 and k2 < 30:
-                    _entry.append(f'✅ KD低檔 K={k2:.0f} → 孫慶龍：底部進場區')
+                    _entry.append(f'✅ KD低檔 K={k2:.0f} → 策略1：底部進場區')
                 if rsi2 and rsi2 < 30:
                     _entry.append(f'✅ RSI超賣 {rsi2:.0f} → 反彈機會')
                 if _bias_i < -20:
-                    _entry.append(f'✅ 年線負乖離 {_bias_i:+.0f}% → 孫慶龍：左側布局區')
+                    _entry.append(f'✅ 年線負乖離 {_bias_i:+.0f}% → 策略1：左側布局區')
                 # RS 相對強度
                 try:
                     _rs_val  = calc_rs_score(df2)
@@ -450,13 +450,13 @@ padding:14px 18px;margin-bottom:12px;">
                 if _bear_align:
                     _exit.append('🔴 空頭排列 → 朱家泓：禁止做多，考慮出清')
                 if _kd_dead:
-                    _exit.append(f'⚠️ KD高檔死叉 K={k2:.0f} → 妮可：開始減碼')
+                    _exit.append(f'⚠️ KD高檔死叉 K={k2:.0f} → 策略3：開始減碼')
                 if _bb_drop_out:
-                    _exit.append('⚠️ 脫離布林上軌 → 妮可：減碼50%')
+                    _exit.append('⚠️ 脫離布林上軌 → 策略3：減碼50%')
                 if _bias_20_i > 15:
                     _exit.append(f'⚠️ 月線乖離 {_bias_20_i:+.0f}% → 過熱，停利部分')
                 if _bias_i > 20:
-                    _exit.append(f'⚠️ 年線乖離 {_bias_i:+.0f}% → 孫慶龍：分批出場')
+                    _exit.append(f'⚠️ 年線乖離 {_bias_i:+.0f}% → 策略1：分批出場')
                 if _p2 < _ma5:
                     _exit.append(f'⚠️ 跌破5MA({_ma5:.1f}) → 林穎：短線停利')
                 # 週MACD 警示：12/26/9 EMA on weekly bars
@@ -489,7 +489,7 @@ padding:14px 18px;margin-bottom:12px;">
                 st.markdown('<div style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:10px;">', unsafe_allow_html=True)
                 st.markdown('**🎯 目標 + 停損**')
                 st.markdown(f'<div style="font-size:12px;color:#c9d1d9;padding:2px 0;">📌 現價：<b>{_p2:.2f}</b></div>', unsafe_allow_html=True)
-                st.markdown(f'<div style="font-size:12px;color:#3fb950;padding:2px 0;">🎯 初步目標（蔡森1:1）：<b>{_target1:.2f}</b></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="font-size:12px;color:#3fb950;padding:2px 0;">🎯 初步目標（策略3 一比一對稱）：<b>{_target1:.2f}</b></div>', unsafe_allow_html=True)
                 _sl_hard = round(_p2 * 0.93, 2)
                 _sl_ma20 = round(_ma20 * 0.99, 2)
                 _dist_hard = round((_p2 - _sl_hard) / _p2 * 100, 1) if _p2 else 0
@@ -501,7 +501,7 @@ padding:14px 18px;margin-bottom:12px;">
                 # 加碼點
                 if _bull_align and vcp2 and not _vcp_ok:
                     _add_pt = round(_hi20_i * 1.01, 2)
-                    st.markdown(f'<div style="font-size:12px;color:#58a6ff;padding:2px 0;">➕ 加碼點（蔡森突破法）：>{_add_pt:.2f}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="font-size:12px;color:#58a6ff;padding:2px 0;">➕ 加碼點（策略3 突破法）：>{_add_pt:.2f}</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
         else:
@@ -532,7 +532,7 @@ padding:14px 18px;margin-bottom:12px;">
                 '🏆 龍頭預警區 — 極稀有高成長標的</div>' +
                 ''.join(f'<div style="font-size:12px;color:#ffe066;padding:2px 0;">• {r}</div>' for r in _dragon_reasons) +
                 '<div style="font-size:11px;color:#997a00;margin-top:4px;">'
-                '孫慶龍：「不要聽老闆說什麼，要看他做什麼」— 這是最誠實的領先指標</div>'
+                '策略1：「不要聽老闆說什麼，要看他做什麼」— 最誠實的領先指標</div>'
                 '</div>', unsafe_allow_html=True)
 
         st.markdown("""<div style="margin:24px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#58a6ff18,#0d1117);border-left:4px solid #58a6ff;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#58a6ff;">📈 技術面分析</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">健康度評分 · VCP波幅收縮 · K線技術圖 · 即時操作建議</span></div>""", unsafe_allow_html=True)
@@ -832,7 +832,7 @@ border-left:4px solid {_verdict_color};border-radius:8px;padding:12px 14px;margi
             else:
                 st.info('數據不足（需≥40日）')
         with ec2:
-            st.markdown('**布林通道 [春哥]**')
+            st.markdown('**布林通道 [策略3]**')
             if bb2:
                 b1,b2=st.columns(2)
                 with b1:
@@ -852,14 +852,14 @@ border-left:4px solid {_verdict_color};border-radius:8px;padding:12px 14px;margi
         _vcp_verdict = ''
         _bb_verdict  = ''
         if vcp2:
-            _vcp_verdict = ('✅ VCP確認收縮：等待帶量突破頸線，是高確信進場點 [Minervini/妮可]'
+            _vcp_verdict = ('✅ VCP確認收縮：等待帶量突破頸線，是高確信進場點 [策略3]'
                             if vcp2['contracting']
                             else '⚪ 波幅尚未收縮：等待整理完成後再觀察')
         if bb2:
             if bb2['bw'] < bb2['bw_mean']*0.6:
-                _bb_verdict = '🔵 布林帶寬極度收縮：即將爆發，注意量能確認方向 [春哥]'
+                _bb_verdict = '🔵 布林帶寬極度收縮：即將爆發，注意量能確認方向 [策略3]'
             elif bb2['near_upper']:
-                _bb_verdict = '🟢 股價黏近上軌＋強勢：搭配大量是突破確認訊號 [春哥]'
+                _bb_verdict = '🟢 股價黏近上軌＋強勢：搭配大量是突破確認訊號 [策略3]'
             else:
                 _bb_verdict = f'⚪ 布林帶寬{bb2["bw"]:.1f}%（均值{bb2["bw_mean"]:.1f}%）：尚未到關鍵位置'
         if _vcp_verdict or _bb_verdict:
@@ -872,7 +872,7 @@ border-left:4px solid {_verdict_color};border-radius:8px;padding:12px 14px;margi
         _vcp_c = '#3fb950' if '✅' in _msg or '🟢' in _msg else ('#d29922' if '⚠️' in _msg else '#484f58')
         st.markdown(
             f'<div style="background:#0d1117;border-left:3px solid {_vcp_c};padding:7px 12px;border-radius:0 6px 6px 0;margin:4px 0;">'
-            f'<span style="font-size:11px;color:#8b949e;">🎓 妮可 · VCP</span>　'
+            f'<span style="font-size:11px;color:#8b949e;">🎓 策略3 · VCP</span>　'
             f'<span style="font-size:13px;font-weight:700;color:{_vcp_c};">{_msg}</span>'
             f'</div>', unsafe_allow_html=True
         )
@@ -881,7 +881,7 @@ border-left:4px solid {_verdict_color};border-radius:8px;padding:12px 14px;margi
             _bb_c = '#3fb950' if '✅' in _bb_verdict_safe or '🟢' in _bb_verdict_safe else ('#3aa2f5' if '🔵' in _bb_verdict_safe else '#d29922')
             st.markdown(
                 f'<div style="background:#0d1117;border-left:3px solid {_bb_c};padding:7px 12px;border-radius:0 6px 6px 0;margin:4px 0;">'
-                f'<span style="font-size:11px;color:#8b949e;">🎓 春哥 · 布林</span>　'
+                f'<span style="font-size:11px;color:#8b949e;">🎓 策略3 · 布林</span>　'
                 f'<span style="font-size:13px;font-weight:700;color:{_bb_c};">{_bb_verdict_safe}</span>'
                 f'</div>', unsafe_allow_html=True
             )
@@ -1102,7 +1102,7 @@ border-left:4px solid {_verdict_color};border-radius:8px;padding:12px 14px;margi
         st.markdown("""<div style="margin:24px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#3fb95018,#0d1117);border-left:4px solid #3fb950;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#3fb950;">📊 基本面分析</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">357殖利率評價 · 財報領先指標 · 月營收趨勢 · 六大先行指標</span></div>""", unsafe_allow_html=True)
         # ══ B. 357 評價 ════════════════════════════════════════
         st.markdown('---')
-        st.markdown('#### 💰 B. 357殖利率評價 [孫慶龍]')
+        st.markdown('#### 💰 B. 357殖利率評價 [策略1]')
         if avg_div2 > 0 and price2 > 0:
             _cp2 = round(avg_div2/0.07, 1)
             _fp2 = round(avg_div2/0.05, 1)
@@ -1163,21 +1163,21 @@ padding:12px 16px;margin:8px 0;">
         # ── 357 動態建議 ──
         _asset_type = '📈 大盤' if sid2 in ('^TWII', 'TAIEX') else '📊 個股'
         if avg_div2 > 0:
-            _grade = ("便宜價🟢 — 孫慶龍：積極買進！" if price2<=cheap2
-                      else ("合理價🟡 — 孫慶龍：可分批布局，等殖利率拉升再加碼" if price2<=fair2
-                            else ("昂貴價🔴 — 孫慶龍：謹慎操作，等待回檔再進場" if price2<=dear2
-                                  else "超過昂貴價🔴 — 孫慶龍：絕對不追高，等待大幅修正")))
+            _grade = ("便宜價🟢 — 策略1：積極買進！" if price2<=cheap2
+                      else ("合理價🟡 — 策略1：可分批布局，等殖利率拉升再加碼" if price2<=fair2
+                            else ("昂貴價🔴 — 策略1：謹慎操作，等待回檔再進場" if price2<=dear2
+                                  else "超過昂貴價🔴 — 策略1：絕對不追高，等待大幅修正")))
             _357_verdict = f'**{sid2} {name2}** 現價 {price2:.1f} 處於 {_grade}，近5年均股利 {avg_div2:.2f} 元'
             _357_c = '#3fb950' if price2<=cheap2 else ('#d29922' if price2<=fair2 else '#f85149')
             st.markdown(
-                f'{_asset_type} **`{sid2}` {name2}** ｜ 孫慶龍·357法則判斷'
+                f'{_asset_type} **`{sid2}` {name2}** ｜ 策略1·357法則判斷'
             )
             st.markdown(f'<div style="background:#161b22;border-left:4px solid {_357_c};padding:10px 14px;border-radius:0 8px 8px 0;font-size:13px;font-weight:700;color:{_357_c};margin:6px 0;">{_357_verdict}</div>', unsafe_allow_html=True)
         # 357結論：直接顯示當前評估，不導向策略手冊
         st.markdown(
             f'<div style="background:#0d1117;border-left:4px solid {_357_c};'
             f'padding:10px 14px;border-radius:0 8px 8px 0;margin:6px 0;">'
-            f'<span style="font-size:12px;color:#8b949e;">{_asset_type} <code>{sid2}</code> {name2} ｜ 🎓 孫慶龍 · 357法則判斷</span><br>'
+            f'<span style="font-size:12px;color:#8b949e;">{_asset_type} <code>{sid2}</code> {name2} ｜ 🎓 策略1 · 357法則判斷</span><br>'
             f'<span style="font-size:14px;font-weight:800;color:{_357_c};">{_357_verdict}</span><br>'
             f'<span style="font-size:11px;color:#8b949e;">判讀邏輯：殖利率≥7%=便宜大買；5-7%=合理；3-5%=偏貴持有；&lt;3%=昂貴停利</span>'
             f'</div>',
@@ -1519,7 +1519,7 @@ padding:12px 16px;margin:8px 0;">
             '💡 這兩個財報數字能預測未來3-6個月的獲利方向：'
             '<br>📌 <b>合約負債</b> = 客戶已付錢但還沒出貨的訂單 → 越高代表訂單很多、業績有保障'
             '<br>📌 <b>資本支出</b> = 公司花錢蓋廠房買設備 → 越高代表看好未來、準備大幅擴產'
-            '<br>⭐ 兩個都很高 = 孫慶龍所說的「龍多股」，是存股首選'
+            '<br>⭐ 兩個都很高 = 策略1所說的「龍多股」，是存股首選'
             '</div>', unsafe_allow_html=True)
         fc1,fc2=st.columns(2)
         cl_ok=cl2 is not None and cl2>0
@@ -1568,7 +1568,7 @@ padding:12px 16px;margin:8px 0;">
         st.markdown(
             f'<div style="background:#0d1117;border-left:4px solid {_fin_color};'
             f'padding:10px 14px;border-radius:0 8px 8px 0;margin:6px 0;">'
-            f'<span style="font-size:12px;color:#8b949e;">🎓 孫慶龍 · 財報領先指標</span><br>'
+            f'<span style="font-size:12px;color:#8b949e;">🎓 策略1 · 財報領先指標</span><br>'
             f'<span style="font-size:14px;font-weight:800;color:{_fin_color};">{_fin_label}</span><br>'
             f'<span style="font-size:11px;color:#8b949e;">兩指標均高 = 龍多股首選；詳細門檻見「策略手冊」Tab</span>'
             f'</div>',
@@ -1619,7 +1619,7 @@ padding:12px 16px;margin:8px 0;">
                 st.caption('⚠️ 季財報使用快取資料（本次 API 未回應）')
             st.plotly_chart(plot_quarterly_chart(qtr2,sid2,name2),
                             width='stretch',config={'displayModeBar':False})
-        with st.expander('📖 孫慶龍 結論', expanded=True):
+        with st.expander('📖 策略1 結論', expanded=True):
             if rev2 is not None and not rev2.empty and 'yoy' in rev2.columns:
                 _yoy_last3 = rev2['yoy'].dropna().tail(3).tolist()
                 if len(_yoy_last3) >= 2:
@@ -1638,7 +1638,7 @@ padding:12px 16px;margin:8px 0;">
                     _rv_c = '#3fb950' if '✅' in _rv_sig else ('#f85149' if '🔴' in _rv_sig else '#d29922')
                     st.markdown(
                         f'<div style="background:#0d1117;border-left:3px solid {_rv_c};padding:7px 12px;border-radius:0 6px 6px 0;margin:4px 0;">'
-                        f'<span style="font-size:11px;color:#8b949e;">🎓 孫慶龍 · 月營收</span>　'
+                        f'<span style="font-size:11px;color:#8b949e;">🎓 策略1 · 月營收</span>　'
                         f'<span style="font-size:13px;font-weight:700;color:{_rv_c};">{_rv_sig}（YoY:{_rv_latest:+.1f}%）</span>'
                         f'</div>', unsafe_allow_html=True
                     )
@@ -1942,9 +1942,9 @@ padding:12px 16px;margin:8px 0;">
                 if _mc in df2.columns:
                     _ma_above2[_mn] = price2 > float(df2[_mc].iloc[-1])
 
-        st.markdown("""<div style="margin:24px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#d2a8ff18,#0d1117);border-left:4px solid #d2a8ff;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#d2a8ff;">🏥 體檢表</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">林明樟 MJ 體系 · 4力1棒子 · 現金流矩陣 · OPM護城河</span></div>""", unsafe_allow_html=True)
+        st.markdown("""<div style="margin:24px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#d2a8ff18,#0d1117);border-left:4px solid #d2a8ff;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#d2a8ff;">🏥 體檢表</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">策略2 · 4力1棒子 · 現金流矩陣 · OPM護城河</span></div>""", unsafe_allow_html=True)
 
-        with st.expander('🔬 AI 財報體檢（林明樟 MJ 體系）', expanded=True):
+        with st.expander('🔬 AI 財報體檢（策略2）', expanded=True):
             _fh_key2 = f'_fh_{sid2}'
             if _fh_key2 not in st.session_state:
                 with st.spinner('📊 正在從 FinMind 抓取財報數據…'):
@@ -2393,7 +2393,7 @@ padding:12px 16px;margin:8px 0;">
                     f'<div>'
                     f'<div style="font-size:14px;font-weight:900;color:{_ovc};">{_ov.get("headline","")}</div>'
                     f'<div style="font-size:10px;color:#8b949e;margin-top:2px;">'
-                    f'MJ 林明樟老師財報體系 · 6大模組綜合評估 · '
+                    f'策略2 · 6大模組綜合評估 · '
                     f'✅ {_ov.get("pass_count",0)} 項達標　'
                     f'🔴 {_ov.get("fail_count",0)} 項警示　'
                     f'企業DNA：{_ov.get("dna","--")}'
@@ -2404,7 +2404,7 @@ padding:12px 16px;margin:8px 0;">
                 )
 
         # ══ 🤖 AI 首席顧問總結 ═══════════════════════════════════
-        st.markdown("""<div style="margin:28px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#76e3ea18,#0d1117);border-left:4px solid #76e3ea;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#76e3ea;">🤖 AI 首席顧問總結</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">技術面 · 籌碼 · 基本面 · 財報體檢（MJ體系）· 總經 五維綜合評估</span></div>""", unsafe_allow_html=True)
+        st.markdown("""<div style="margin:28px 0 8px;padding:8px 16px;background:linear-gradient(90deg,#76e3ea18,#0d1117);border-left:4px solid #76e3ea;border-radius:0 6px 6px 0;"><span style="font-size:15px;font-weight:900;color:#76e3ea;">🤖 AI 首席顧問總結</span><span style="font-size:11px;color:#8b949e;margin-left:8px;">技術面 · 籌碼 · 基本面 · 財報體檢（策略2）· 總經 五維綜合評估</span></div>""", unsafe_allow_html=True)
 
         _ai_sum_key = f'_ai_sum_{sid2}'
         _ai_sum_cached = st.session_state.get(_ai_sum_key, '')

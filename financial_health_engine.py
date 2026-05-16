@@ -713,14 +713,14 @@ def no_ai_overall_verdict(fin_data: dict, fh_result: dict) -> dict:
                      f"若下季持續改善，可列入重點追蹤。")
     elif is_cashcow:
         grade, gc = "A+", "#3fb950"
-        headline  = "🟢 印鈔機！A+ 型企業，MJ 最愛標的"
+        headline  = "🟢 印鈔機！A+ 型企業，策略2 最愛標的"
         comment   = (f"企業 DNA = A+ 穩健印鈔機，OCF 為{'正' if ocf > 0 else '負'}。"
                      f"{'共 ' + str(len(pass_items)) + ' 項達標：' + '、'.join(pass_items[:5]) + '。' if pass_items else ''}"
-                     f"現金流真實可信，財務體質堅實，符合 MJ 老師「找到好生意」的核心標準。")
+                     f"現金流真實可信，財務體質堅實，符合 策略2「找到好生意」的核心標準。")
     elif score_pct >= 70:
         grade, gc = "A", "#3fb950"
         headline  = "🟢 優質企業！財務體質健康"
-        comment   = (f"多項指標通過 MJ 嚴格標準：**{'、'.join(pass_items[:5])}**{'等' if len(pass_items) > 5 else ''}。"
+        comment   = (f"多項指標通過 策略2 嚴格標準：**{'、'.join(pass_items[:5])}**{'等' if len(pass_items) > 5 else ''}。"
                      f"{'盈餘含金量高，現金流真實可信。' if eq_ok else ''}"
                      f"整體財務結構穩健，具備中長期投資價值。")
     else:

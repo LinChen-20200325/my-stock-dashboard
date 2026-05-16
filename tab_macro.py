@@ -2171,7 +2171,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         _i1_ind = '費半+美元'
     st.markdown(teacher_conclusion('宏爺', _i1_ind, _i1c, _i1a), unsafe_allow_html=True)
 
-    # ── 孫慶龍：10Y Yield 動態結論 ─────────────────────────────
+    # ── 策略1：10Y Yield 動態結論 ─────────────────────────────
     if _tyx_val is not None:
         if _tyx_val >= 4.8:
             _sql_c = f'10Y殖利率 {_tyx_val:.2f}% → 系統風險！無風險利率飆升，本益比大幅下修'
@@ -3139,19 +3139,19 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     if _m1b_info:
         _diff2 = _m1b_info.get('m1b_yoy', 0) - _m1b_info.get('m2_yoy', 0)
         if _diff2 > 0:
-            _macro_concl.append(f'✅ M1B-M2={_diff2:+.2f}% 正值 → 弘爺：資金行情啟動，大膽做多！（領先大盤3~6月）')
+            _macro_concl.append(f'✅ M1B-M2={_diff2:+.2f}% 正值 → 策略3：資金行情啟動，大膽做多！（領先大盤3~6月）')
         elif _diff2 > -2:
-            _macro_concl.append(f'⚠️ M1B-M2={_diff2:+.2f}% 接近0 → 弘爺：資金動能趨緩，減碼等待訊號確認')
+            _macro_concl.append(f'⚠️ M1B-M2={_diff2:+.2f}% 接近0 → 策略3：資金動能趨緩，減碼等待訊號確認')
         else:
-            _macro_concl.append(f'🔴 M1B-M2={_diff2:+.2f}% 負值 → 弘爺：資金撤離，空手觀望！')
+            _macro_concl.append(f'🔴 M1B-M2={_diff2:+.2f}% 負值 → 策略3：資金撤離，空手觀望！')
     if _bias_info:
         _bv2 = _bias_info.get('bias_240', 0)
         if _bv2 > 20:
-            _macro_concl.append(f'⚠️ 年線乖離 {_bv2:+.1f}% 過大 → 孫慶龍：開始分批減碼（乖離>20%啟動停利）')
+            _macro_concl.append(f'⚠️ 年線乖離 {_bv2:+.1f}% 過大 → 策略1：開始分批減碼（乖離>20%啟動停利）')
         elif _bv2 < -20:
-            _macro_concl.append(f'✅ 年線乖離 {_bv2:+.1f}% 嚴重低估 → 孫慶龍：左側交易最佳布局區，大膽加碼！')
+            _macro_concl.append(f'✅ 年線乖離 {_bv2:+.1f}% 嚴重低估 → 策略1：左側交易最佳布局區，大膽加碼！')
         else:
-            _macro_concl.append(f'✅ 年線乖離 {_bv2:+.1f}% 正常 → 孫慶龍：可持股，按計畫操作')
+            _macro_concl.append(f'✅ 年線乖離 {_bv2:+.1f}% 正常 → 策略1：可持股，按計畫操作')
     for _mc2 in _macro_concl:
         _mc3 = _mc2.replace('✅','').replace('⚠️','').replace('🔴','').strip()
         if '→' in _mc3:
@@ -3397,7 +3397,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         else:
             st.info('M1B/M2 數據載入後自動顯示宏爺資金動能判斷')
 
-        # ── 孫慶龍：BIAS240 × 外銷訂單 二維矩陣（v5.0）──────────────
+        # ── 策略1：BIAS240 × 外銷訂單 二維矩陣（v5.0）──────────────
         if _bias_info8:
             _sql_b    = _b240_8
             _exp_yoy8 = float(_m8_exp.get('yoy', 0)) if _m8_exp else None

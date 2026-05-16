@@ -907,20 +907,27 @@ def render_data_health_raw():
                              source='yfinance', endpoint=f'Ticker({tk}).history(auto_adjust=True)',
                              proxy=False))
             # AUM / Beta / 費用率：拆成個別行各自檢查
+            _is_oversea_etf = bool(_e1.get('_is_overseas'))
+            _is_private_etf = bool(_e1.get('_likely_private'))
+            _oversea_msg = '海外 ETF 不適用（本系統 5 源僅限台灣 ETF）'
+            _private_msg = '私募/特殊 ETF — AUM、費用率、NAV 主流資料源皆未揭露'
+            _aum_na = _is_private_etf and not _e1.get('aum')
             rows.append(_row('ETF 規模 AUM',
                              str(_dt_r.date.today()) if _e1.get('aum') else None, 'daily',
+                             error_msg=(_private_msg if _aum_na else None),
+                             probe_status=('na' if _aum_na else None),
                              source='yfinance', endpoint='.info[totalAssets]', proxy=False))
             rows.append(_row('ETF Beta',
                              str(_dt_r.date.today()) if _e1.get('beta') is not None else None,
                              'daily',
                              source='yfinance', endpoint='.info[beta]', proxy=False))
-            _is_oversea_etf = bool(_e1.get('_is_overseas'))
-            _oversea_msg = '海外 ETF 不適用（本系統 5 源僅限台灣 ETF）'
-            _exp_na = _is_oversea_etf and not _e1.get('expense')
+            _exp_na = (_is_oversea_etf or _is_private_etf) and not _e1.get('expense')
             rows.append(_row('ETF 費用率',
                              str(_dt_r.date.today()) if _e1.get('expense') else None, 'daily',
                              optional=False,
-                             error_msg=(_oversea_msg if _exp_na else _e1.get('_err_expense')),
+                             error_msg=(_oversea_msg if _is_oversea_etf
+                                        else _private_msg if _is_private_etf
+                                        else _e1.get('_err_expense')),
                              probe_status=('na' if _exp_na else None),
                              source='SITCA + MoneyDJ + yfinance 3 源',
                              endpoint='sitca.org.tw IN2222_01 / moneydj Basic0004 / .info[expenseRatio]',
@@ -928,10 +935,12 @@ def render_data_health_raw():
             # NAV 淨值
             _prem = _e1.get('premium') or {}
             _nav_ok = _prem.get('nav') is not None
-            _nav_na = _is_oversea_etf and not _nav_ok
+            _nav_na = (_is_oversea_etf or _is_private_etf) and not _nav_ok
             rows.append(_row('NAV 淨值',
                              str(_dt_r.date.today()) if _nav_ok else None, 'daily',
-                             error_msg=(_oversea_msg if _nav_na else _e1.get('_err_nav')),
+                             error_msg=(_oversea_msg if _is_oversea_etf
+                                        else _private_msg if _is_private_etf
+                                        else _e1.get('_err_nav')),
                              probe_status=('na' if _nav_na else None),
                              source='FinMind / TWSE OpenAPI',
                              endpoint='TaiwanETFNetAssetValue / opendata',

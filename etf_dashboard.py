@@ -979,7 +979,8 @@ def _colored_box(text: str, color: str = 'green') -> None:
 
 def _teacher_conclusion(teacher: str, indicator_val: str, conclusion: str,
                         action: str = '', color: str | None = None) -> None:
-    """ETF dashboard 老師結論卡（與 app.py teacher_conclusion 同格式，直接 render）"""
+    """ETF dashboard 策略結論卡（teacher 字串透過 ui_widgets._to_strategy 對應到 策略1/2/3 顯示）"""
+    from ui_widgets import _to_strategy as _t2s
     if color is None:
         _neg_kw = ['警戒', '危險', '賣超', '空單', '減碼', '停損', '撤離', '跌破', '過熱', '回調', '降倉', '空頭', '侵蝕', '高估']
         _pos_kw = ['強勢', '買超', '多頭', '安全', '健康', '買進', '加碼', '流入', '突破', '進攻', '上漲', '低估', '特價']
@@ -989,13 +990,12 @@ def _teacher_conclusion(teacher: str, indicator_val: str, conclusion: str,
             color = '#da3633'
         else:
             color = '#d29922'
-    _icon = {'宏爺': '🎯', '孫慶龍': '💡', '弘爺': '🎯', '朱家泓': '📊',
-             '妮可': '📈', '春哥': '🌱', '蔡森': '📐', '郭俊宏': '💰'}.get(teacher, '👤')
+    _label, _icon = _t2s(teacher)
     _action_str = f'，{action}' if action else ''
     st.markdown(
         f'<div style="border-left:3px solid {color};padding:6px 10px;margin:4px 0;'
         f'background:rgba(0,0,0,0.2);border-radius:0 6px 6px 0;">'
-        f'<span style="color:#ffd700;font-weight:700;font-size:12px;">{_icon} {teacher}</span>'
+        f'<span style="color:#ffd700;font-weight:700;font-size:12px;">{_icon} {_label}</span>'
         f'<span style="color:#8b949e;font-size:12px;">：</span>'
         f'<span style="color:#c9d1d9;font-size:12px;">{indicator_val} → </span>'
         f'<span style="color:{color};font-size:12px;font-weight:600;">{conclusion}</span>'

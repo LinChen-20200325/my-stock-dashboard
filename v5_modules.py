@@ -298,7 +298,7 @@ def calc_dividend_yield_357(price: float, eps_ttm: float,
 
     if est_yield >= 7 and stable:
         signal, color = "🟢 甜甜價（7%+連續5年）", G
-        msg = f"預估殖利率 {est_yield:.2f}% ≥ 7% 且連續配息 {div_years} 年 — 孫慶龍存股首選"
+        msg = f"預估殖利率 {est_yield:.2f}% ≥ 7% 且連續配息 {div_years} 年 — 策略1 存股首選"
     elif est_yield >= 7:
         signal, color = "🟢 高殖利率（配息不穩定）", G
         msg = f"殖利率 {est_yield:.2f}% 高，但連續配息僅 {div_years} 年（<5年），需確認配息穩定性"

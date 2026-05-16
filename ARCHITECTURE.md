@@ -784,8 +784,9 @@ ETF 回測子頁（render_etf_backtest）額外流程：
 | `beginner_kpi(title, value, plain_meaning, ...)` | 初學者 KPI 卡 | 5 |
 | `show_term_help(term)` | 術語對照表查詢 | 2 |
 | `kpi(title, value, sub='', color, border)` | 一般 KPI 卡 | **53** |
-| `teacher_box(icon, teacher, logic)` | 舊版老師建議框（保留向下相容） | 0 |
-| `teacher_conclusion(teacher, indicator_val, conclusion, ...)` | 老師結論（自動配色） | **25** |
+| `teacher_box(icon, teacher, logic)` | 舊版老師建議框（保留向下相容；內含 `_to_strategy()` 自動翻譯） | 0 |
+| `teacher_conclusion(teacher, indicator_val, conclusion, ...)` | 老師結論（自動配色；老師→策略翻譯統一在此） | **25** |
+| `_STRATEGY_MAP: dict` + `_to_strategy(teacher)` | **集中翻譯**：老師 → 策略 1/2/3（按方法論分 3 類：估值/存股、財報體檢、技術/動能） | 內部 + `etf_dashboard._teacher_conclusion` |
 | `signal_box(label, color, desc='')` | 訊號方塊 | 4 |
 | `TERM_EXPLAIN: dict` | 13 個常見術語白話對照 | 內部 |
 
@@ -1280,7 +1281,9 @@ with tab_edu:
 | 原則 | 只顯示「從網路 API 直接抓取的第一手原始資料」；嚴禁均線 / RSI / 乖離率 / AI 評分等任何計算值 |
 | 欄位 | `資料名稱 / 最後更新 / 狀態燈號（🟢🟡🔴⚪🔵）`|
 | 呼叫端 | `app.py:9055 render_data_health_raw()` |
-| **PMI 診斷** | 當「🇹🇼 台灣製造業 PMI」進入「資料異常清單」時，自動於下方加 `🔬 8 段備援源詳細診斷` expander；按鈕觸發 `macro_core.diagnose_tw_pmi_sources()` 逐源探測，輸出 {method, status (✅/⚠️/❌/⚪), detail, url} 表格（PR #53）|
+| **PMI 診斷** | 當「🇹🇼 台灣製造業 PMI」進入「資料異常清單」時，自動於下方加 `🔬 8 段備援源詳細診斷` expander；按鈕觸發 `macro_core.diagnose_tw_pmi_sources()` 逐源探測，輸出 {method, status (✅/⚠️/❌/⚪), detail, url} 表格（PR #53）。此外 `fetch_tw_pmi` 本身 8 段備援於 commit `8d3fb71` 補完每段 `errs` 追蹤（無回應 / HTTP 非 200），讓 `_err_pmi` 完整呈現所有源根因 |
+| **私募 ETF 判別** | `etf_tab_single._likely_private` 啟發式：台股 ETF 但 AUM + 費用率 + NAV 三主流源皆空 → 視為私募/特殊 ETF；health_inspector 將三列同步標記 `probe_status='na'`，訊息「私募/特殊 ETF — AUM、費用率、NAV 主流資料源皆未揭露」（commit `c3250d7`）|
+| **批次分析空 K 線** | `tab_stock_grp._fetch_single_t3` 當 yfinance + FinMind 雙源皆空時，於 result 帶入 `error` 訊息（供 `_fetch_err` → `error_msg` 顯示），且**跳過 4hr 快取**避免短期持續空轉（commit `26da8fb`）|
 
 ---
 

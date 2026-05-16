@@ -91,20 +91,44 @@ def kpi(title, value, sub='', color='#e6edf3', border='#21262d'):
             f'<div style="font-size:10px;color:#8b949e;margin-top:3px;">{sub}</div></div>')
 
 
+# 老師 → 策略代號（UI 顯示用；變數/邏輯不受影響）
+_STRATEGY_MAP = {
+    # 策略 1：估值 / 存股
+    '孫慶龍': ('策略1', '💡'),
+    '郭俊宏': ('策略1', '💰'),
+    # 策略 2：財報體檢
+    'MJ':     ('策略2', '🏥'),
+    '林明樟': ('策略2', '🏥'),
+    # 策略 3：技術 / 動能 / 資金面
+    '蔡森':   ('策略3', '📐'),
+    '春哥':   ('策略3', '🌱'),
+    '弘爺':   ('策略3', '🎯'),
+    '妮可':   ('策略3', '📈'),
+    '朱家泓': ('策略3', '📊'),
+    '宏爺':   ('策略3', '🎯'),
+}
+
+
+def _to_strategy(teacher: str) -> tuple[str, str]:
+    """老師名稱 → (策略代號, icon)；找不到時退化為通用標籤。"""
+    return _STRATEGY_MAP.get(teacher, ('策略', '👤'))
+
+
 def teacher_box(icon, teacher, logic):
     # 保留向下相容，但建議用 teacher_conclusion()
+    _label, _ic = _to_strategy(teacher)
     return (f'<div class="teacher-card">'
-            f'<span style="font-size:12px;color:#ffd700;font-weight:700;">{icon} {teacher}</span>'
+            f'<span style="font-size:12px;color:#ffd700;font-weight:700;">{_ic} {_label}</span>'
             f'<div style="font-size:12px;color:#8b949e;margin-top:4px;line-height:1.6;">{logic}</div>'
             f'</div>')
 
 
 def teacher_conclusion(teacher, indicator_val, conclusion, action='', color=None):
     """
-    統一老師結論格式：
-    老師：指標數值 → 結論，行動建議
+    統一策略結論格式：
+    策略X：指標數值 → 結論，行動建議
 
-    teacher:       老師名稱（宏爺 / 孫慶龍 / 弘爺 / 朱家泓 / 妮可）
+    teacher:       策略原始識別字串（內部對應到 策略1/2/3 顯示）
     indicator_val: 指標與數值（如 '費半 7837(+0.5%)'）
     conclusion:    目前結論（如 '半導體強勢'）
     action:        建議行動（如 '台股多方加分'）
@@ -121,13 +145,12 @@ def teacher_conclusion(teacher, indicator_val, conclusion, action='', color=None
             color = '#da3633'   # 漲=紅
         else:
             color = '#d29922'
-    _icon = {'宏爺': '🎯', '孫慶龍': '💡', '弘爺': '🎯', '朱家泓': '📊',
-             '妮可': '📈', '春哥': '🌱', '蔡森': '📐'}.get(teacher, '👤')
+    _label, _icon = _to_strategy(teacher)
     _action_str = f'，{action}' if action else ''
     return (
         f'<div style="border-left:3px solid {color};padding:6px 10px;margin:4px 0;'
         f'background:rgba(0,0,0,0.2);border-radius:0 6px 6px 0;">'
-        f'<span style="color:#ffd700;font-weight:700;font-size:12px;">{_icon} {teacher}</span>'
+        f'<span style="color:#ffd700;font-weight:700;font-size:12px;">{_icon} {_label}</span>'
         f'<span style="color:#8b949e;font-size:12px;">：</span>'
         f'<span style="color:#c9d1d9;font-size:12px;">{indicator_val} → </span>'
         f'<span style="color:{color};font-size:12px;font-weight:600;">{conclusion}</span>'

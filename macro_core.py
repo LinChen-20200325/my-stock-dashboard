@@ -538,7 +538,11 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
             try:
                 _r_meta = fetch_url(_meta_url, timeout=10, attempts=1,
                                     headers={'Accept': 'application/json'})
-                if _r_meta is None or _r_meta.status_code != 200:
+                if _r_meta is None:
+                    errs.append(f'dgtw.{_meta_url[-18:]}:無回應')
+                    continue
+                if _r_meta.status_code != 200:
+                    errs.append(f'dgtw.{_meta_url[-18:]}:HTTP{_r_meta.status_code}')
                     continue
                 try:
                     _j_meta = _r_meta.json()
@@ -614,7 +618,11 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
         try:
             r = fetch_url(ndc_url, timeout=12, attempts=1,
                           headers={'Accept': 'application/json'})
-            if r is None or r.status_code != 200:
+            if r is None:
+                errs.append(f'NDC.{ndc_url[-15:]}:無回應')
+                continue
+            if r.status_code != 200:
+                errs.append(f'NDC.{ndc_url[-15:]}:HTTP{r.status_code}')
                 continue
             try:
                 j = r.json()
@@ -670,6 +678,7 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
                     'https://www.macromicro.me/charts/16/tw-pmi'):
             r = fetch_url(url, timeout=12, attempts=1)
             if r is None:
+                errs.append(f'MacroMicro.{url[-20:]}:無回應')
                 continue
             r.encoding = 'utf-8'
             txt = BeautifulSoup(r.text, 'html.parser').get_text(' ', strip=True)
@@ -698,6 +707,7 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
                          'https://www.cier.edu.tw/'):
             r = fetch_url(cier_url, timeout=12, attempts=1)
             if r is None:
+                errs.append(f'CIER.{cier_url[-15:]}:無回應')
                 continue
             r.encoding = 'utf-8'
             txt = BeautifulSoup(r.text, 'html.parser').get_text(' ', strip=True)
@@ -729,7 +739,9 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
         from bs4 import BeautifulSoup
         sf_url = 'https://www.stockfeel.com.tw/?s=%E5%8F%B0%E7%81%A3+PMI'
         r = fetch_url(sf_url, timeout=12, attempts=1)
-        if r is not None:
+        if r is None:
+            errs.append('StockFeel:無回應')
+        else:
             r.encoding = 'utf-8'
             txt = BeautifulSoup(r.text, 'html.parser').get_text(' ', strip=True)
             m = _re.search(
@@ -756,7 +768,9 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
         from bs4 import BeautifulSoup
         cnyes_url = 'https://news.cnyes.com/api/v3/news/category/headline?limit=30&q=%E5%8F%B0%E7%81%A3+PMI'
         r = fetch_url(cnyes_url, timeout=12, attempts=1)
-        if r is not None:
+        if r is None:
+            errs.append('Cnyes:無回應')
+        else:
             try:
                 d = r.json()
                 items = (d.get('items', {}).get('data') or [])
@@ -831,6 +845,7 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
                          'https://www.cier.edu.tw/news/list?cid=8&page=1'):
             r = fetch_url(cier_url, timeout=12, attempts=1)
             if r is None:
+                errs.append(f'CIER-cid8.{cier_url[-15:]}:無回應')
                 continue
             r.encoding = 'utf-8'
             txt = BeautifulSoup(r.text, 'html.parser').get_text(' ', strip=True)
@@ -859,7 +874,9 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
         mdj_url = ('https://www.moneydj.com/KMDJ/Search/SearchListNew.aspx'
                    '?keyword=%E5%8F%B0%E7%81%A3PMI&type=knowledge')
         r = fetch_url(mdj_url, timeout=12, attempts=1)
-        if r is not None:
+        if r is None:
+            errs.append('MoneyDJ:無回應')
+        else:
             r.encoding = 'utf-8'
             txt = BeautifulSoup(r.text, 'html.parser').get_text(' ', strip=True)
             m = _re.search(
