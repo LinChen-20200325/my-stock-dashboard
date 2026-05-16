@@ -883,18 +883,56 @@ def render_data_health_raw():
                              source='FinMind / TWSE OpenAPI',
                              endpoint='TaiwanETFNetAssetValue / opendata',
                              proxy=True))
-            # ETF 組合：多標的 K線
-            _ep = st.session_state.get('etf_portfolio_data') or {}
-            _tickers_p = [r.get('ticker') for r in (_ep.get('rows') or [])]
-            if _tickers_p:
-                rows.append(_row(f'ETF 組合 K線 {_tickers_p}',
-                                 str(_dt_r.date.today()), 'daily',
-                                 source='yfinance',
-                                 endpoint=','.join(_tickers_p[:6]) + ('…' if len(_tickers_p) > 6 else ''),
-                                 proxy=False))
             _all_section_rows.extend(rows)
             _tbl(rows)
             st.caption('⚠️ 殖利率、追蹤誤差、CAGR、Sharpe、折溢價率為計算值，不顯示於此。')
+
+        # ────────── ETF 組合：逐檔個別診斷 ──────────────────────
+        _ep = st.session_state.get('etf_portfolio_data') or {}
+        _ep_rows = _ep.get('rows') or []
+        if _ep_rows:
+            st.markdown('---')
+            st.markdown(f'**🗂️ ETF 組合逐檔診斷（{len(_ep_rows)} 檔）**')
+            _today_ep = str(_dt_r.date.today())
+            _port_diag_rows = []
+            for _pr in _ep_rows:
+                _tk_p = _pr.get('ticker', '')
+                if not _tk_p:
+                    continue
+                _cp  = _pr.get('current_price') or 0
+                _shr = _pr.get('shares') or 0
+                _dvr = _pr.get('dividend_received') or 0
+                _is_tw = _tk_p.endswith('.TW') or _tk_p.endswith('.TWO')
+                # 現價（K線）
+                _port_diag_rows.append(_row(
+                    f'{_tk_p} 現價 / K線',
+                    _today_ep if _cp > 0 else None, 'daily',
+                    error_msg=None if _cp > 0 else 'yfinance 抓不到收盤價（代號錯誤或下市）',
+                    source='yfinance',
+                    endpoint=f'Ticker({_tk_p}).history(5d)',
+                    proxy=False))
+                # 配息
+                _div_st = None
+                _div_err = None
+                if _dvr > 0:
+                    _div_st = None  # green
+                elif _is_tw and _shr > 0:
+                    _div_st = 'zero'  # 台股 ETF 但近 1 年無配息（成長型 / 新上市 / yfinance 缺）
+                else:
+                    _div_st = 'na'  # 海外或無股數
+                    _div_err = '海外 ETF 不適用本系統配息計算' if not _is_tw else None
+                _port_diag_rows.append(_row(
+                    f'{_tk_p} 配息（近1年）',
+                    _today_ep if _dvr > 0 else None, 'yearly',
+                    optional=True,
+                    probe_status=_div_st,
+                    error_msg=_div_err,
+                    source='yfinance',
+                    endpoint=f'Ticker({_tk_p}).dividends',
+                    proxy=False))
+            _all_section_rows.extend(_port_diag_rows)
+            _tbl(_port_diag_rows)
+            st.caption('💡 配息「🔵 該股本期為 0」可能為成長型 ETF（不配息）或新上市未滿 1 年；「⚪ 不適用」為海外 ETF。')
 
     # ══════════════════════════════════════════════════════════════
     # ⚠️ 資料異常清單（最下方一覽，獨立於上方總表/抽查）
