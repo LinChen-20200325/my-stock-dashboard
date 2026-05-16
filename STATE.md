@@ -79,6 +79,10 @@
 | #102 | refactor(grape): 「評估我的組合」拉到主頁面，系統提議改 expander 折疊。子 tab 結構展平，主視圖直接顯示「評估我的組合」（讀組合配置持股），「系統提議」（高股息 10 檔挑選）改 st.expander 預設收起 | c4fcb41 |
 | #103 | refactor(etf): 回測也共用持股組合（單一輸入來源全面收斂）。移除 etf_tab_backtest 的 text_area，改讀 session_state['etf_portfolio_rows']；新增 radio 切換「希望比例%（規劃驗證）/ 現值比例%（實況回放）」做回測權重。ETF 組合 tab 全頁面唯一輸入來源達成 | 3204666 |
 | #104 | feat(diag): 資料診斷新增 ETF 組合「逐檔個別判斷」。health_inspector ETF Raw Data expander 內加 N×2 行（每檔現價+配息），三態探測：海外 ETF 配息標 ⚪ na、台股無配息標 🔵 zero、現價失敗標 🔴；所有 rows 加入底部異常清單彙總 | f82c121 |
+| (branch `claude/fix-yield-river-bands-YK8i7`) | refactor(ui) 老師名稱統一改為「策略 1/2/3」（按方法論分 3 類，僅改 UI 顯示文字） | cd50c48 |
+| (同上) | fix(tab_stock_grp): 批次分析空 K 線改為標記 error 並跳過快取（修「🔴 未取得」靜默失敗） | 26da8fb |
+| (同上) | fix(etf): 私募/特殊 ETF 三項全空時改判 na（⚪不適用）— AUM+費用率+NAV 啟發式 | c3250d7 |
+| (同上) | fix(macro): TW PMI 8 段備援補上每段失敗原因追蹤（無回應 / HTTP 狀態碼） | 8d3fb71 |
 
 ## 🎯 Backlog
 - **環境工**：33 條 stale remote branches 清理（PR #42-#78 累積，sandbox token 無 delete 權）
