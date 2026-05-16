@@ -204,6 +204,8 @@ etf_fetch  ←  etf_calc  ←  etf_render  ←  etf_dashboard (shim)
 
 **設計**：HTML 字串模板（無 Streamlit 依賴），呼叫端負責用 `st.markdown(..., unsafe_allow_html=True)` 渲染。
 
+**測試覆蓋（Phase 7G 補完）**：`tests/test_ui_widgets.py` 涵蓋 `ui_widgets.py` 全 10 函式 + `TERM_EXPLAIN` / `_STRATEGY_MAP` 兩個常數，共 71 cases — `cond_badge` 8 + `TERM_EXPLAIN` 3 + `explain_box` 5 + `traffic_light` 7 + `beginner_kpi` 7 + `show_term_help` 5 + `kpi` 6 + `_to_strategy` 6 + `teacher_box` 5 + `teacher_conclusion` 10 + `signal_box` 9。
+
 ### §6.6 同期修補：`_no_ai_survival` 1Q fallback（commit `e678d22`）
 
 `financial_health_engine._no_ai_survival` 對 B 項（現金流量允當比率）分支：

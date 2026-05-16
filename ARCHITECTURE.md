@@ -1030,6 +1030,31 @@ tab_stock.py / tab_stock_grp.py / tab_macro.py  (module-level import)
 - ✅ tests/test_ui_widgets.py：TestCondBadge 8 cases
 - 涵蓋：truthy 綠色 / falsy 灰色 / label 嵌入 / HTML 結構（span + border-radius + font-size）/ `0` / `None` / `''` 邊界 / 空 label
 
+#### `ui_widgets.py` 既有 9 函式 + 1 常數補完單測（P2-B Phase 7G）
+
+**動機**：PR #60 從 `app.py` 抽出 `ui_widgets.py` 時未附對應單測，Phase 7F 雖建立 `tests/test_ui_widgets.py` 但僅涵蓋新增的 `cond_badge`，留下 9 函式 + 1 常數無單測。7G 補完此技術債，零生產碼變動。
+
+**測試明細**：
+
+| 測試類別 | 涵蓋函式/常數 | cases | 重點邊界 |
+|---|---|---|---|
+| `TestTermExplain` | `TERM_EXPLAIN` 常數 | 3 | 13 個術語 keys / 每 entry 為 2-tuple / 字串非空 |
+| `TestExplainBox` | `explain_box` | 5 | detail 有/無 → `<br>` 條件渲染 |
+| `TestTrafficLight` | `traffic_light` | 7 | good>bad 優先序 / 預設與自訂 neutral_label / value 參數預留 |
+| `TestBeginnerKpi` | `beginner_kpi` | 7 | tip 有/無 → `💡` 條件渲染 / 自訂 color |
+| `TestShowTermHelp` | `show_term_help` | 5 | 已知 / 未知 / 空字串 / 中文 term / 復用 explain_box |
+| `TestKpi` | `kpi` | 6 | sub / 自訂 color & border |
+| `TestToStrategy` | `_to_strategy` + `_STRATEGY_MAP` | 6 | 策略 1/2/3 全 10 老師 + 未知 fallback `('策略', '👤')` |
+| `TestTeacherBox` | `teacher_box` | 5 | logic 嵌入 / 已知 vs 未知 teacher |
+| `TestTeacherConclusion` | `teacher_conclusion` | 10 | 台股紅綠慣例（正面 → `#da3633` 紅、負面 → `#2ea043` 綠）+ 手動 color 覆寫 + action 關鍵字觸發 |
+| `TestSignalBox` | `signal_box` | 9 | green/red/yellow/blue 4 keys + 未知 color fallback |
+
+**驗證**：
+- ✅ ruff (`All checks passed!`) — 純測試碼，無 py_compile 變動
+- ✅ pytest 全套 **637/637 全綠**（原 574 + 新增 63）
+- ✅ 7F 8 cases + 7G 63 cases = 71 cases 全綠（ui_widgets.py 模組 100% 函式 coverage）
+- 涵蓋：所有預設參數路徑 / 條件渲染分支（detail/tip/desc 有無）/ 配色 fallback / 未知 key fallback / 11 個關鍵字觸發 teacher_conclusion 自動配色
+
 #### `app.py` 結構演進（PR #66/#68/#70-#73 — P2-B Phase 4+5 全收官 ✅✅）
 
 **最終戰績**：app.py 9622 → **1378 行（−85.7%）**，4 個 TAB 全部抽到獨立 `.py` 模組。
