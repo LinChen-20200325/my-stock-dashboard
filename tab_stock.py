@@ -504,6 +504,71 @@ padding:14px 18px;margin-bottom:12px;">
                     st.markdown(f'<div style="font-size:12px;color:#58a6ff;padding:2px 0;">➕ 加碼點（策略3 突破法）：>{_add_pt:.2f}</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
+            # ══ 關鍵價位 K 線圖（停利/停損/支撐壓力直接畫在 K 線上）═════
+            try:
+                from plotly.subplots import make_subplots
+                _kdf = df2.tail(180).copy()
+                _fig_kl = make_subplots(
+                    rows=2, cols=1, shared_xaxes=True,
+                    row_heights=[0.78, 0.22], vertical_spacing=0.03,
+                )
+                _open_s = _kdf['open'] if 'open' in _kdf.columns else _kdf['close']
+                _fig_kl.add_trace(go.Candlestick(
+                    x=_kdf.index, open=_open_s,
+                    high=_kdf['high'], low=_kdf['low'], close=_kdf['close'],
+                    increasing_line_color='#da3633', decreasing_line_color='#2ea043',
+                    name='K線', showlegend=False,
+                ), row=1, col=1)
+                _ma20s = _kdf['MA20'] if 'MA20' in _kdf.columns else df2['close'].rolling(20).mean().tail(len(_kdf))
+                _ma100s = _kdf['MA100'] if 'MA100' in _kdf.columns else df2['close'].rolling(100).mean().tail(len(_kdf))
+                _fig_kl.add_trace(go.Scatter(x=_kdf.index, y=_ma20s,
+                    line=dict(color='#FF69B4', width=1.4), name='MA20'), row=1, col=1)
+                _fig_kl.add_trace(go.Scatter(x=_kdf.index, y=_ma100s,
+                    line=dict(color='#00CED1', width=1.4), name='MA100'), row=1, col=1)
+                if 'volume' in _kdf.columns:
+                    _vc = ['#da3633' if c >= o else '#2ea043'
+                           for c, o in zip(_kdf['close'], _open_s)]
+                    _fig_kl.add_trace(go.Bar(x=_kdf.index, y=_kdf['volume'],
+                        marker_color=_vc, name='量', showlegend=False), row=2, col=1)
+                # 9 條關鍵價位水平線
+                _add_pt_v = locals().get('_add_pt')
+                _hlines = [
+                    (_tp2_p,   '#58a6ff', 'dash',    f'停利2 +10% {_tp2_p:.2f}'),
+                    (_tp1_p,   '#3fb950', 'dash',    f'停利1 +5% {_tp1_p:.2f}'),
+                    (_hi20_p,  '#f0883e', 'dot',     f'壓力 {_hi20_p:.2f}'),
+                    (_target1, '#2ea043', 'dashdot', f'初步目標 {_target1:.2f}'),
+                    (_ma5,     '#FFD700', 'solid',   f'5MA {_ma5:.2f}'),
+                    (_lo20_p,  '#1f6feb', 'dot',     f'支撐 {_lo20_p:.2f}'),
+                    (_sl_ma20, '#8b949e', 'dot',     f'月線停損 {_sl_ma20:.2f}'),
+                    (_sl_p,    '#f85149', 'dash',    f'停損 -8% {_sl_p:.2f}'),
+                    (_sl_hard, '#a40e26', 'dashdot', f'硬停損 -7% {_sl_hard:.2f}'),
+                ]
+                if _add_pt_v:
+                    _hlines.append((_add_pt_v, '#a371f7', 'dashdot', f'加碼點 >{_add_pt_v:.2f}'))
+                for _y, _c, _ds, _txt in _hlines:
+                    if _y and _y > 0:
+                        _fig_kl.add_hline(
+                            y=_y, line=dict(color=_c, width=1, dash=_ds),
+                            annotation_text=_txt, annotation_position='top left',
+                            annotation_font=dict(color=_c, size=10),
+                            row=1, col=1,
+                        )
+                _fig_kl.update_layout(
+                    title=dict(text=f'{sid2} {name2} K線 + 關鍵價位（停利/停損/支撐壓力）',
+                               font=dict(size=13)),
+                    height=460, margin=dict(l=10, r=10, t=40, b=10),
+                    template='plotly_dark', showlegend=True,
+                    legend=dict(orientation='h', yanchor='bottom', y=1.02,
+                                x=1, xanchor='right', font=dict(size=10)),
+                    xaxis_rangeslider_visible=False,
+                )
+                _fig_kl.update_yaxes(title_text='價格', row=1, col=1)
+                _fig_kl.update_yaxes(title_text='量', row=2, col=1)
+                st.plotly_chart(_fig_kl, use_container_width=True,
+                                config={'displayModeBar': False})
+            except Exception as _kl_err:
+                st.caption(f'⚠️ K 線繪製失敗：{_kl_err}')
+
         else:
             st.info('載入個股資料後顯示進出場訊號')
 
