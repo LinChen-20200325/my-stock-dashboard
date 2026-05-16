@@ -72,6 +72,7 @@
 | #90 | fix(tab_stock): 殖利率河流圖 TTM=0 三閃門 — PR #84 後 6770 力積電等個股因合成 ex-div 落未來導致 365D rolling 抓不到 → 河流消失；加 (1) 跳未來事件 (2) fallback 改去年 7/1 (3) 安全網退 avg_div2 橫帶並改 title 標示 | b6f07cc |
 | #92 | fix(tab_stock): 殖利率河流圖 fallback 模式移除「便宜/合理/昂貴/⛔超昂貴」分區判讀（橫帶僅作歷史對照，避免誤導使用者拿過時資料做估值決策）+ 補強 TTM=0 三閃門 | 9f8c5ad |
 | #94 | fix(app+data_loader): 個股現價慢一天 — pickle 快取（app.py:225）TTL 4h→0.5h + 命中路徑加 `latest_date` freshness gate（5 day grace 涵蓋週末連假）+ FinMind `taiwan_stock_daily` 明確帶 `end_date`。修盤前抓到 yesterday close、盤後 cache HIT 仍回舊價 bug | 152b52b |
+| #96 | feat(tab_stock): 新增本益比 (PE) + 股價淨值比 (PB) 河流圖（殖利率河流圖之後）。PE 用 qtr2['EPS'] 4Q rolling sum + asof 對應公告生效日（季末+60天）避免穿越；三組閾值 selectbox 切換（通用 10/15/20、保守 8/12/16 景氣循環、成長 12/18/25）；TTM EPS≤0 虧損股 warning 不畫帶。PB 從 yfinance bookValue 取最新值畫橫帶（0.8/1.5/2.5），雙後綴 .TW/.TWO 重試 | 55f7f2f |
 
 ## 🎯 Backlog
 - **環境工**：33 條 stale remote branches 清理（PR #42-#78 累積，sandbox token 無 delete 權）
