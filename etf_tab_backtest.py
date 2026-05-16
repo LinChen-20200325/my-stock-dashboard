@@ -33,36 +33,41 @@ def render_etf_backtest(gemini_fn=None):
     mkt_info = st.session_state.get('mkt_info', {})
     regime   = mkt_info.get('regime', 'neutral')
 
-    st.markdown('#### 📋 回測組合設定（格式：代號,權重%）')
-    default_bt = "0050.TW,50\nBND,30\n00878.TW,20"
-    raw_bt = st.text_area('回測組合', value=default_bt, height=100,
-                           key='etf_bt_input', label_visibility='collapsed')
-    col_p, col_i, col_b = st.columns(3)
+    st.markdown('#### 📋 回測設定（沿用上方「輸入持股組合」）')
+    _port_rows = st.session_state.get('etf_portfolio_rows')
+    if not _port_rows:
+        st.info('💡 請先到上方「📋 輸入持股組合」區塊輸入持股並點「計算組合」，回測會自動沿用同一份組合。')
+        return
+
+    col_w, col_p, col_i = st.columns(3)
+    _weight_mode = col_w.radio(
+        '回測權重來源',
+        ['希望比例%（規劃驗證）', '現值比例%（實況回放）'],
+        index=0, key='etf_bt_weight_mode', horizontal=False,
+        help='希望比例：模擬「按你規劃配置」過去表現；現值比例：模擬「目前實際配置」過去表現')
     period  = col_p.selectbox('回測期間', ['3y', '5y', '10y', '1y'],
                                index=1, key='etf_bt_period')
     initial = col_i.number_input('初始資金（元）', value=100000,
                                   step=10000, key='etf_bt_init')
-    col_b.markdown('<br>', unsafe_allow_html=True)
-    if col_b.button('🚀 開始回測', key='etf_bt_btn', use_container_width=True):
+    if st.button('🚀 開始回測', key='etf_bt_btn', use_container_width=True):
         st.session_state['etf_bt_active'] = True
 
     if not st.session_state.get('etf_bt_active'):
-        st.info('💡 設定組合與期間後點擊「開始回測」')
+        st.info('💡 選好權重來源、期間後點擊「開始回測」')
         return
 
-    # 解析權重
+    # 從持股組合萃取回測 rows（ticker + 權重）
+    _pct_key = 'target_pct' if _weight_mode.startswith('希望') else 'actual_pct'
     rows = []
-    for line in raw_bt.strip().splitlines():
-        parts = [p.strip() for p in line.split(',')]
-        if len(parts) >= 2:
-            try:
-                rows.append({'ticker': parts[0].upper(),
-                              'weight': float(parts[1]) / 100})
-            except ValueError:
-                pass
+    for _r in _port_rows:
+        _w = float(_r.get(_pct_key) or 0)
+        if _w > 0 and _r.get('ticker'):
+            rows.append({'ticker': _r['ticker'].upper(),
+                          'weight': _w / 100})
     if not rows:
-        st.error('❌ 請輸入有效的回測組合')
+        st.error('❌ 持股組合內無有效權重，請回上方檢查')
         return
+    st.caption(f'📊 回測組合：{len(rows)} 檔｜權重來源：{_weight_mode}')
 
     # 正規化權重
     w_sum = sum(r['weight'] for r in rows)
