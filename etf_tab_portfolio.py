@@ -37,12 +37,13 @@ def render_etf_portfolio(gemini_fn=None):
     regime   = mkt_info.get('regime', 'neutral')
     macro_allocation_banner(regime)
 
-    st.markdown('#### 📋 輸入組合（格式：代號,目標權重%,現值 元[,類型]）')
-    st.caption('💡 第 4 欄「類型」可填「核心」或「衛星」（省略則依代號自動分類）。MK 框架核衛分離見下方燈號。')
-    default_input = ("0050.TW,40,200000,核心\n"
-                     "00713.TW,30,150000,核心\n"
-                     "BND,20,100000,核心\n"
-                     "00878.TW,10,50000,核心")
+    st.markdown('#### 📋 輸入持股組合（格式：代號,股數,均價[,希望比例%][,類型]）')
+    st.caption('💡 第 4 欄「希望比例%」省略 → 以實際現值權重為目標；第 5 欄「核心/衛星」省略 → 依代號自動分類。'
+               '系統會自動以即時收盤價算現值、資本利得與已領配息。')
+    default_input = ("0050.TW,1000,135.50,40,核心\n"
+                     "00713.TW,500,82.30,30,核心\n"
+                     "BND,200,72.50,20,核心\n"
+                     "00878.TW,2000,20.10,10,核心")
     raw       = st.text_area('組合輸入', value=default_input, height=130,
                               key='etf_p_input', label_visibility='collapsed')
     tolerance = st.slider('再平衡容忍偏離度（%）', 1, 15, 5, key='etf_p_tol')
@@ -51,7 +52,7 @@ def render_etf_portfolio(gemini_fn=None):
         st.session_state['etf_p_active'] = True
 
     if not st.session_state.get('etf_p_active'):
-        st.info('💡 填入組合後點擊「計算組合」')
+        st.info('💡 填入持股後點擊「計算組合」')
         return
 
     # MK 框架 #9：核心 / 衛星預設分類（高股息大型 / 全市場 / 債券 → 核心；其他 → 衛星）
@@ -62,30 +63,137 @@ def render_etf_portfolio(gemini_fn=None):
         code = tk.replace('.TWO', '').replace('.TW', '').upper()
         return '核心' if code in _CORE_TICKERS else '衛星'
 
-    # 解析輸入
+    # ── 解析輸入：代號,股數,均價[,希望比例%][,類型] ───────────
     rows = []
     for line in raw.strip().splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
         parts = [p.strip() for p in line.split(',')]
-        if len(parts) >= 3:
-            try:
-                _tk = parts[0].upper()
-                _role = parts[3] if (len(parts) >= 4 and parts[3] in ('核心', '衛星')) else _auto_role(_tk)
-                rows.append({'ticker': _tk,
-                              'target_pct': float(parts[1]),
-                              'current_value': float(parts[2]),
-                              'role': _role})
-            except ValueError:
-                st.warning(f'⚠️ 無法解析：{line}')
+        if len(parts) < 3:
+            st.warning(f'⚠️ 欄位不足（至少需 代號,股數,均價）：{line}')
+            continue
+        try:
+            _tk        = parts[0].upper()
+            _shares    = float(parts[1])
+            _avg_price = float(parts[2])
+            # 第 4 欄：希望比例% 或 類型；第 5 欄：類型
+            _target_pct = None
+            _role = None
+            for _p in parts[3:5]:
+                if not _p:
+                    continue
+                if _p in ('核心', '衛星'):
+                    _role = _p
+                else:
+                    try:
+                        _target_pct = float(_p)
+                    except ValueError:
+                        pass
+            if _role is None:
+                _role = _auto_role(_tk)
+            rows.append({
+                'ticker':     _tk,
+                'shares':     _shares,
+                'avg_price':  _avg_price,
+                'cost':       _shares * _avg_price,
+                'target_pct': _target_pct,   # 可能 None，下面 fallback
+                'role':       _role,
+            })
+        except ValueError:
+            st.warning(f'⚠️ 無法解析（股數/均價需為數字）：{line}')
     if not rows:
-        st.error('❌ 請輸入有效的組合資料')
+        st.error('❌ 請輸入有效的持股資料')
         return
 
-    total_value = sum(r['current_value'] for r in rows)
-    for r in rows:
-        r['actual_pct']  = round(r['current_value'] / total_value * 100, 2)
-        r['deviation']   = round(r['actual_pct'] - r['target_pct'], 2)
+    # ── 批次抓現價 + 配息（每檔 yfinance 已有 @st.cache_data 護身）──
+    _cur_prices = {}
+    _div_received = {}
+    with st.spinner('抓取現價與配息資料...'):
+        import datetime as _dt_pf
+        _cutoff = pd.Timestamp(_dt_pf.date.today() - _dt_pf.timedelta(days=365))
+        for r in rows:
+            _tk = r['ticker']
+            try:
+                _df_p = fetch_etf_price(_tk, period='5d')
+                _cur_prices[_tk] = float(_df_p['Close'].iloc[-1]) if _df_p is not None and not _df_p.empty else 0.0
+            except Exception:
+                _cur_prices[_tk] = 0.0
+            try:
+                _div_s = fetch_etf_dividends(_tk)
+                if _div_s is not None and not _div_s.empty:
+                    _div_s = _div_s.copy()
+                    _div_s.index = pd.to_datetime(_div_s.index, errors='coerce')
+                    # 移除 tz info 避免 cutoff 比對失敗
+                    try:
+                        _div_s.index = _div_s.index.tz_localize(None)
+                    except Exception:
+                        pass
+                    _recent = _div_s[_div_s.index >= _cutoff]
+                    _div_received[_tk] = float(_recent.sum()) * r['shares']
+                else:
+                    _div_received[_tk] = 0.0
+            except Exception:
+                _div_received[_tk] = 0.0
 
-    st.markdown(f'**總資產現值：{total_value:,.0f} 元**')
+    # ── 算現值/資本利得/已領配息 ──
+    for r in rows:
+        _cp = _cur_prices.get(r['ticker'], 0.0)
+        r['current_price']   = _cp
+        r['current_value']   = r['shares'] * _cp
+        r['capital_gain']    = r['current_value'] - r['cost']
+        r['capital_gain_pct']= (r['capital_gain'] / r['cost'] * 100) if r['cost'] > 0 else 0.0
+        r['dividend_received'] = _div_received.get(r['ticker'], 0.0)
+        # 總損益 = 資本利得 + 已領配息（粗略不含稅費）
+        r['total_pnl']       = r['capital_gain'] + r['dividend_received']
+
+    total_value = sum(r['current_value'] for r in rows)
+    total_cost  = sum(r['cost'] for r in rows)
+    total_gain  = sum(r['capital_gain'] for r in rows)
+    total_div   = sum(r['dividend_received'] for r in rows)
+
+    # 沒給 target_pct 的列 → 用實際現值權重補；給了的 → 校驗加總
+    _filled_target_sum = sum(r['target_pct'] for r in rows if r['target_pct'] is not None)
+    _missing_target = [r for r in rows if r['target_pct'] is None]
+    if _missing_target and _filled_target_sum < 100:
+        _remain = 100 - _filled_target_sum
+        _per    = _remain / len(_missing_target) if _missing_target else 0
+        for r in _missing_target:
+            r['target_pct'] = round(_per, 2)
+    elif _missing_target:
+        # 全靠實際權重做目標
+        for r in rows:
+            if r['target_pct'] is None:
+                r['target_pct'] = round(r['current_value'] / total_value * 100, 2) if total_value > 0 else 0
+
+    for r in rows:
+        r['actual_pct'] = round(r['current_value'] / total_value * 100, 2) if total_value > 0 else 0
+        r['deviation']  = round(r['actual_pct'] - r['target_pct'], 2)
+
+    # ── 資產總覽卡（總成本 / 總現值 / 資本利得 / 已領配息 / 總損益）──
+    _gain_color = '#3fb950' if total_gain >= 0 else '#f85149'
+    _gain_sign  = '+' if total_gain >= 0 else ''
+    _total_pnl  = total_gain + total_div
+    _pnl_color  = '#3fb950' if _total_pnl >= 0 else '#f85149'
+    _pnl_sign   = '+' if _total_pnl >= 0 else ''
+    st.markdown(
+        f'<div style="background:#0d1117;border:1px solid #30363d;border-radius:10px;'
+        f'padding:16px 20px;margin:8px 0 16px;display:flex;gap:24px;flex-wrap:wrap;">'
+        f'<div><div style="font-size:11px;color:#8b949e;">總投入成本</div>'
+        f'<div style="font-size:18px;font-weight:700;color:#c9d1d9;">{total_cost:,.0f}</div></div>'
+        f'<div><div style="font-size:11px;color:#8b949e;">總現值</div>'
+        f'<div style="font-size:18px;font-weight:700;color:#c9d1d9;">{total_value:,.0f}</div></div>'
+        f'<div><div style="font-size:11px;color:#8b949e;">資本利得</div>'
+        f'<div style="font-size:18px;font-weight:700;color:{_gain_color};">'
+        f'{_gain_sign}{total_gain:,.0f} ({_gain_sign}{(total_gain/total_cost*100 if total_cost else 0):.2f}%)</div></div>'
+        f'<div><div style="font-size:11px;color:#8b949e;">已領配息（近1年）</div>'
+        f'<div style="font-size:18px;font-weight:700;color:#d29922;">+{total_div:,.0f}</div></div>'
+        f'<div><div style="font-size:11px;color:#8b949e;">總損益（利得+配息）</div>'
+        f'<div style="font-size:18px;font-weight:900;color:{_pnl_color};">'
+        f'{_pnl_sign}{_total_pnl:,.0f} ({_pnl_sign}{(_total_pnl/total_cost*100 if total_cost else 0):.2f}%)</div></div>'
+        f'</div>', unsafe_allow_html=True)
+
+    # ── 持股明細表 ──
     # 查詢 ETF 名稱（去掉 .TW/.TWO 後綴後查 stock_names）
     try:
         from stock_names import get_stock_name as _gsn_etf
@@ -96,12 +204,20 @@ def render_etf_portfolio(gemini_fn=None):
     except Exception:
         def _etf_name(tk): return tk
     overview_df = pd.DataFrame([{
-        'ETF': r['ticker'],
-        '名稱': _etf_name(r['ticker']),
-        '類型': r.get('role', '—'),
-        '目標權重%': r['target_pct'],
-        '實際權重%': r['actual_pct'], '偏離度%': r['deviation'],
-        '現值(元)': f'{r["current_value"]:,.0f}',
+        'ETF':       r['ticker'],
+        '名稱':       _etf_name(r['ticker']),
+        '類型':       r.get('role', '—'),
+        '股數':       f'{int(r["shares"]):,}',
+        '均價':       f'{r["avg_price"]:.2f}',
+        '現價':       f'{r["current_price"]:.2f}' if r['current_price'] > 0 else '-',
+        '成本(元)':   f'{r["cost"]:,.0f}',
+        '現值(元)':   f'{r["current_value"]:,.0f}',
+        '資本利得':   f'{"+" if r["capital_gain"]>=0 else ""}{r["capital_gain"]:,.0f}',
+        '利得%':      f'{"+" if r["capital_gain_pct"]>=0 else ""}{r["capital_gain_pct"]:.2f}%',
+        '已領配息':   f'+{r["dividend_received"]:,.0f}' if r['dividend_received'] > 0 else '-',
+        '希望比例%':  f'{r["target_pct"]:.1f}',
+        '實際比例%':  f'{r["actual_pct"]:.1f}',
+        '偏離度%':    f'{"+" if r["deviation"]>=0 else ""}{r["deviation"]:.1f}',
     } for r in rows])
     st.dataframe(overview_df, use_container_width=True, hide_index=True)
 
@@ -235,15 +351,7 @@ def render_etf_portfolio(gemini_fn=None):
 
     # ── 再平衡交易指令（含具體股數）────────────────────────────
     st.markdown('#### ⚖️ 再平衡交易指令')
-    # 抓取現價以計算股數
-    _cur_prices = {}
-    with st.spinner('取得現價...'):
-        for r in rows:
-            try:
-                _df_tmp = fetch_etf_price(r['ticker'], period='5d')
-                _cur_prices[r['ticker']] = float(_df_tmp['Close'].iloc[-1]) if not _df_tmp.empty else 0
-            except Exception:
-                _cur_prices[r['ticker']] = 0
+    # 現價 dict 已於上方資產追蹤段批次抓取，此處直接複用
 
     rebal_actions = []
     for r in rows:

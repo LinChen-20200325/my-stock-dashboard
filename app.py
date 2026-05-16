@@ -1098,10 +1098,6 @@ tab_macro, tab_heatmap, tab_stock, tab_stock_grp, tab_screener, tab_etf, tab_etf
     '🌍 總經', '🗺️ 產業熱力圖', '🔬 個股', '🏆 個股組合',
     '💎 高息網', '🏦 ETF', '⚖️ ETF組合', '🔎 資料診斷', '📚 教學',
 ])
-with tab_etf_grp:
-    _tab_etf_port, _tab_etf_bt, _tab_etf_ai, _tab_etf_grape = st.tabs([
-        '⚖️ 組合配置', '📈 歷史回測', '🤖 ETF AI', '📅 葡萄串領息法',
-    ])
 
 # ══════════════════════════════════════════════════════════════
 # TAB 1: 總體經濟
@@ -1381,24 +1377,22 @@ with tab_etf:
     render_etf_single(gemini_fn=gemini_call)
 
 # ══════════════════════════════════════════════════════════════
-# TAB: ETF 組合配置與再平衡
+# TAB: ETF 組合戰情室（4 區段整合：組合配置 + 歷史回測 + AI + 葡萄串）
 # ══════════════════════════════════════════════════════════════
-with _tab_etf_port:
+with tab_etf_grp:
+    # ── ① 組合配置與再平衡 ──
     render_etf_portfolio(gemini_fn=gemini_call)
+    st.markdown('<hr style="margin:32px 0;border-color:#30363d;">', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════
-# TAB: ETF 歷史回測
-# ══════════════════════════════════════════════════════════════
-with _tab_etf_bt:
+    # ── ② 歷史回測 ──
     render_etf_backtest(gemini_fn=gemini_call)
+    st.markdown('<hr style="margin:32px 0;border-color:#30363d;">', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════
-# TAB: ETF AI 綜合評斷（總經連動）
-# ══════════════════════════════════════════════════════════════
-with _tab_etf_ai:
+    # ── ③ AI 綜合評斷（總經連動）──
     render_etf_ai(gemini_fn=gemini_call)
+    st.markdown('<hr style="margin:32px 0;border-color:#30363d;">', unsafe_allow_html=True)
 
-with _tab_etf_grape:
+    # ── ④ 葡萄串領息法 ──
     render_grape_ladder(gemini_fn=gemini_call)
 
 # ══════════════════════════════════════════════════════════════
