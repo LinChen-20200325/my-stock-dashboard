@@ -7,7 +7,7 @@
   * stdlib: pandas, datetime.timedelta
   * 外部: unified_decision.render_unified_decision
   * etf_dashboard.py 內部 helper (21):
-    - 渲染類: _colored_box / _etf_ai_hokei / _plot_etf_chart / _render_bias
+    - 渲染類: _colored_box / _plot_etf_chart / _render_bias
       / _teacher_conclusion / macro_allocation_banner
     - 計算類: auto_detect_benchmark / calc_avg_yield / calc_cagr / calc_current_yield
       / calc_premium_discount / calc_total_return_1y / calc_tracking_error
@@ -31,7 +31,7 @@ def render_etf_single(gemini_fn=None):
     from unified_decision import render_unified_decision
     from etf_dashboard import (
         # 渲染類
-        _colored_box, _etf_ai_hokei, _plot_etf_chart, _render_bias,
+        _colored_box, _plot_etf_chart, _render_bias,
         _teacher_conclusion, macro_allocation_banner,
         # 計算類
         auto_detect_benchmark, calc_avg_yield, calc_cagr, calc_current_yield,
@@ -593,11 +593,7 @@ def render_etf_single(gemini_fn=None):
         '_err_nav':     _err_nav,
     }
 
-    # ── AI ETF 存股決策總結 ───────────────────────────────────
-    if gemini_fn:
-        _etf_ai_hokei(gemini_fn, ticker, etf_name, cur_yield, _bias240_ai, _kv_ai, _dv_ai)
-
-    # ── 統一投資決策分析模組 ──────────────────────────────────
+    # ── 統一投資決策分析模組（AI 首席顧問決策中心）─────────────
     render_unified_decision(gemini_fn, {
         'type': 'etf',
         'id':   ticker,

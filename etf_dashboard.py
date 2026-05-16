@@ -8,13 +8,11 @@ import numpy as np
 import plotly.graph_objects as go
 import yfinance as yf
 from datetime import timedelta
-from unified_decision import render_unified_decision
-from daily_checklist import calc_stats
 
 def _fetch_news_for(ticker: str, name: str = "", n: int = 4) -> str:
     """抓取個股/ETF 相關新聞，回傳格式化字串。失敗時回傳空字串。"""
     try:
-        import feedparser as _fp, html as _h, re as _re2
+        import feedparser as _fp, html as _h
     except ImportError:
         return ""
     _q = f"{ticker} {name}".strip()
@@ -1176,105 +1174,6 @@ def compute_etf_peer_ranking(ticker: str, periods: tuple = (63, 126, 252)) -> di
         return {'_err': f'{type(_e).__name__}', 'category': _category, 'peers': _peers}
 
 
-
-def _etf_ai_hokei(gemini_fn, ticker, name, cur_yield, bias240, k_val, d_val):
-    """ETF AI 存股決策總結 — 買跌不買漲（左側交易）鐵血紀律"""
-    import re as _re, json as _json
-
-    st.markdown('---')
-    st.markdown('### 🤖 AI ETF 存股決策總結')
-    st.caption('嚴守「買跌不買漲（左側交易）」紀律，以年線乖離率＋殖利率＋KD 三維度研判定期定額節奏。')
-
-    # ── 規則引擎先行判定 ──────────────────────────────────────
-    kd_high = (k_val is not None and k_val > 80) or (d_val is not None and d_val > 80)
-    if bias240 is None:
-        _sig, _col, _bg = '資料不足（< 240 日）', '#8b949e', '#161b22'
-    elif bias240 <= 0 and cur_yield >= 6:
-        _sig, _col, _bg = '極佳買點 (加速扣款)', '#3fb950', '#0d2818'
-    elif bias240 <= 0:
-        _sig, _col, _bg = '極佳買點 (加速扣款)', '#3fb950', '#0d2818'
-    elif bias240 < 10:
-        _sig, _col, _bg = '正常存股 (紀律扣款)', '#d29922', '#1c1500'
-    elif kd_high:
-        _sig, _col, _bg = '停止買進 (暫停扣款)', '#f85149', '#2a0d0d'
-    else:
-        _sig, _col, _bg = '謹慎觀望 (減少扣款)', '#d29922', '#1c1500'
-
-    _b240_str = f'{bias240:+.2f}%' if bias240 is not None else 'N/A（資料不足 240 日）'
-    _k_str    = f'{k_val:.1f}' if k_val is not None else 'N/A'
-    _d_str    = f'{d_val:.1f}' if d_val is not None else 'N/A'
-    _kd_label = f'K:{_k_str} / D:{_d_str}' + (' 🔴 高檔' if kd_high else '')
-
-    # ── 資料概覽卡 ────────────────────────────────────────────
-    st.markdown(
-        f'<div style="background:{_bg};border:2px solid {_col};border-radius:12px;'
-        f'padding:20px 24px;margin:8px 0;">'
-        f'<div style="font-size:22px;font-weight:900;color:{_col};">{_sig}</div>'
-        f'<div style="display:flex;gap:32px;margin-top:14px;flex-wrap:wrap;">'
-        f'<div><div style="font-size:11px;color:#8b949e;">年線乖離率 (BIAS240)</div>'
-        f'<div style="font-size:18px;font-weight:700;color:#c9d1d9;">{_b240_str}</div></div>'
-        f'<div><div style="font-size:11px;color:#8b949e;">KD 指標</div>'
-        f'<div style="font-size:18px;font-weight:700;color:#c9d1d9;">{_kd_label}</div></div>'
-        f'<div><div style="font-size:11px;color:#8b949e;">現金殖利率</div>'
-        f'<div style="font-size:18px;font-weight:700;color:#c9d1d9;">{cur_yield:.2f}%</div></div>'
-        f'</div></div>',
-        unsafe_allow_html=True)
-
-    # ── LLM 精煉研判按鈕 ──────────────────────────────────────
-    _sess_key = f'etf_hokei_{ticker}'
-    if st.button('🤖 AI 精煉研判（存股節奏）', key='etf_hokei_btn'):
-        _news_str = _fetch_news_for(ticker, name, 4)
-        _prompt = (
-            "你是嚴格執行「買跌不買漲（左側交易）」紀律的ETF存股顧問。\n"
-            "根據以下數據，套用判定邏輯，只輸出 JSON，不含其他文字：\n\n"
-            f"ETF: {name} ({ticker})\n"
-            f"年線乖離率(BIAS240): {_b240_str}\n"
-            f"K值: {_k_str}  D值: {_d_str}  KD高檔(>80): {'是' if kd_high else '否'}\n"
-            f"現金殖利率: {cur_yield:.2f}%\n\n"
-            f"【近期ETF相關新聞】\n{_news_str}\n\n"
-            "判定邏輯：\n"
-            "【極佳買點(加速扣款)】年線乖離率<=0% 且 殖利率>=6%\n"
-            "【正常存股(紀律扣款)】0%<年線乖離率<10%\n"
-            "【停止買進(暫停扣款)】年線乖離率>=10% 且 KD高檔(>80)\n\n"
-            '輸出格式（嚴格JSON）：\n'
-            '{"signal":"極佳買點|正常存股|停止買進","reading":"50字以內精煉解讀","action":"行動指令10字內"}'
-        )
-        with st.spinner('AI 存股研判中...'):
-            raw = gemini_fn(_prompt, max_tokens=300)
-        if raw and not raw.startswith('⚠️'):
-            _m = _re.search(r'\{[^{}]+\}', raw, _re.DOTALL)
-            try:
-                _j = _json.loads(_m.group()) if _m else {}
-                if not _j.get('signal'):
-                    _j = {'signal': _sig, 'reading': raw[:200], 'action': ''}
-            except Exception:
-                _j = {'signal': _sig, 'reading': raw[:200], 'action': ''}
-            st.session_state[_sess_key] = _j
-            st.rerun()
-        else:
-            st.warning(raw or 'AI 回傳為空，請確認 GEMINI_API_KEY')
-
-    # ── 顯示已快取結果 ────────────────────────────────────────
-    _saved = st.session_state.get(_sess_key)
-    if _saved:
-        _s  = _saved.get('signal', _sig)
-        _r  = _saved.get('reading', '')
-        _a  = _saved.get('action', '')
-        _sc = '#3fb950' if '極佳' in _s else ('#f85149' if '停止' in _s else '#d29922')
-        _sb = '#0d2818' if '極佳' in _s else ('#2a0d0d' if '停止' in _s else '#1c1500')
-        st.markdown(
-            f'<div style="background:{_sb};border-left:4px solid {_sc};border-radius:8px;'
-            f'padding:16px 20px;margin:8px 0;">'
-            f'<div style="font-size:15px;font-weight:700;color:{_sc};">{_s}</div>'
-            f'<div style="font-size:13px;color:#c9d1d9;margin-top:8px;line-height:1.7;">{_r}</div>'
-            + (f'<div style="font-size:12px;color:#8b949e;margin-top:10px;'
-               f'border-top:1px solid #30363d;padding-top:8px;">'
-               f'📌 行動指令：<b style="color:{_sc};">{_a}</b></div>' if _a else '')
-            + '</div>',
-            unsafe_allow_html=True)
-        if st.button('🔄 清除結果', key='etf_hokei_clear'):
-            st.session_state.pop(_sess_key, None)
-            st.rerun()
 
 # ETF → GICS 類股對照（僅涵蓋常見 ETF，未知 ETF 歸入「其他」）
 _ETF_SECTOR_MAP = {
