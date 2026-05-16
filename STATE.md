@@ -73,6 +73,8 @@
 | #92 | fix(tab_stock): 殖利率河流圖 fallback 模式移除「便宜/合理/昂貴/⛔超昂貴」分區判讀（橫帶僅作歷史對照，避免誤導使用者拿過時資料做估值決策）+ 補強 TTM=0 三閃門 | 9f8c5ad |
 | #94 | fix(app+data_loader): 個股現價慢一天 — pickle 快取（app.py:225）TTL 4h→0.5h + 命中路徑加 `latest_date` freshness gate（5 day grace 涵蓋週末連假）+ FinMind `taiwan_stock_daily` 明確帶 `end_date`。修盤前抓到 yesterday close、盤後 cache HIT 仍回舊價 bug | 152b52b |
 | #96 | feat(tab_stock): 新增本益比 (PE) + 股價淨值比 (PB) 河流圖（殖利率河流圖之後）。PE 用 qtr2['EPS'] 4Q rolling sum + asof 對應公告生效日（季末+60天）避免穿越；三組閾值 selectbox 切換（通用 10/15/20、保守 8/12/16 景氣循環、成長 12/18/25）；TTM EPS≤0 虧損股 warning 不畫帶。PB 從 yfinance bookValue 取最新值畫橫帶（0.8/1.5/2.5），雙後綴 .TW/.TWO 重試 | 55f7f2f |
+| #98 | refactor(etf): 移除「AI ETF 存股決策總結」與 AI 首席顧問決策中心併軌（兩者功能重疊都做 BIAS240+KD+殖利率三維判讀）。刪 _etf_ai_hokei() 函數 98 行 + 順手清 3 個 pre-existing dead imports（render_unified_decision/calc_stats/re as _re2） | 2350d72 |
+| #99 | feat(etf): ETF 組合 4 分頁整合為 1 + 持股資產追蹤改造。Phase A：app.py 移除內嵌 tab，改 tab_etf_grp 順序呼叫 4 個 render + hr 分隔線。Phase B：輸入格式 `代號,目標權重%,現值元` → `代號,股數,均價[,希望比例%][,類型]`；新增自動計算現價/現值/成本/資本利得/已領配息（近1年除息×股數）/總損益；資產總覽卡 5 大 metric；批次抓現價並 dedup 下游再平衡 fetch 迴圈 | b6e4562 |
 
 ## 🎯 Backlog
 - **環境工**：33 條 stale remote branches 清理（PR #42-#78 累積，sandbox token 無 delete 權）
