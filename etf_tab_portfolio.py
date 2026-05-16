@@ -615,7 +615,7 @@ def render_etf_portfolio(gemini_fn=None):
 
     # 存入 session_state
     st.session_state['etf_portfolio_data'] = {
-        'rows': rows, 'rebal_actions': rebal_actions,
+        'rows': rows, 'war_rows': _war_rows, 'rebal_actions': rebal_actions,
         'total_value': total_value, 'regime': regime,
         'loss_pct': loss_pct,
     }
