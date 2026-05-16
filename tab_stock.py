@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from tab_helpers import format_condition_emoji, parse_cash_flow_ratio, safe_ma
+
 
 def render_tab_stock():
     # ─ Late imports（避免循環 import）─
@@ -374,18 +376,10 @@ padding:14px 18px;margin-bottom:12px;">
             '</div>', unsafe_allow_html=True)
         if df2 is not None and not df2.empty:
             _p2    = float(df2['close'].iloc[-1])
-            # MA 欄位：若不存在則即時計算
-            def _safe_ma(df, n):
-                col = f'MA{n}'
-                if col in df.columns:
-                    return float(df[col].iloc[-1])
-                if len(df) >= n:
-                    return float(df['close'].tail(n).mean())
-                return float(df['close'].mean())
-            _ma5   = _safe_ma(df2, 5)
-            _ma20  = _safe_ma(df2, 20)
-            _ma60  = _safe_ma(df2, 60)
-            _ma240 = _safe_ma(df2, 240)
+            _ma5   = safe_ma(df2, 5)
+            _ma20  = safe_ma(df2, 20)
+            _ma60  = safe_ma(df2, 60)
+            _ma240 = safe_ma(df2, 240)
 
             # 趨勢排列
             _bull_align  = _p2 > _ma20 > _ma60   # 多頭排列
@@ -2153,30 +2147,18 @@ padding:12px 16px;margin:8px 0;">
                     _r1102 = _surv2.get('Rule_100_100_10', {})
                     _r110c2 = _sc_map.get(_r1102.get('Status', 'Fail'), '#f85149')
                     # 各分項勾叉（門檻：A>100% / B≥100% / C>10%，與 financial_health_engine:416/423/431 對齊）
-                    import re as _re_r110a
-                    def _r110_ok_a(_s, _thr, _strict):
-                        _ss = str(_s or '')
-                        if not _ss or 'N/A' in _ss:
-                            return None
-                        _mn = _re_r110a.search(r'(-?\d+(?:\.\d+)?)\s*%', _ss)
-                        if not _mn:
-                            return None
-                        _vn = float(_mn.group(1))
-                        return (_vn > _thr) if _strict else (_vn >= _thr)
-                    _a_ok2 = _r110_ok_a(_r1102.get('Cash_Flow_Ratio',''), 100, True)
-                    _b_ok2 = _r110_ok_a(_r1102.get('Cash_Flow_Adequacy',''), 100, False)
-                    _c_ok2 = _r110_ok_a(_r1102.get('Cash_Reinvestment',''), 10, True)
-                    def _tk2(x):
-                        return '✅' if x is True else ('❌' if x is False else '⚪')
+                    _a_ok2 = parse_cash_flow_ratio(_r1102.get('Cash_Flow_Ratio',''), 100, strict=True)
+                    _b_ok2 = parse_cash_flow_ratio(_r1102.get('Cash_Flow_Adequacy',''), 100, strict=False)
+                    _c_ok2 = parse_cash_flow_ratio(_r1102.get('Cash_Reinvestment',''), 10, strict=True)
                     with _s2c[2]:
                         st.markdown(
                             f'<div style="background:{_r110c2}18;border:1px solid {_r110c2}55;'
                             f'border-radius:8px;padding:10px;text-align:center;">'
                             f'<div style="font-size:11px;color:#8b949e;">🔄 100/100/10</div>'
                             f'<div style="font-size:11px;color:#c9d1d9;">'
-                            f'A{_tk2(_a_ok2)}{_r1102.get("Cash_Flow_Ratio","N/A")} '
-                            f'B{_tk2(_b_ok2)}{_r1102.get("Cash_Flow_Adequacy","N/A")} '
-                            f'C{_tk2(_c_ok2)}{_r1102.get("Cash_Reinvestment","N/A")}</div>'
+                            f'A{format_condition_emoji(_a_ok2)}{_r1102.get("Cash_Flow_Ratio","N/A")} '
+                            f'B{format_condition_emoji(_b_ok2)}{_r1102.get("Cash_Flow_Adequacy","N/A")} '
+                            f'C{format_condition_emoji(_c_ok2)}{_r1102.get("Cash_Reinvestment","N/A")}</div>'
                             f'<div style="font-size:12px;font-weight:700;color:{_r110c2};">{_r1102.get("Status","?")}</div>'
                             f'<div style="font-size:10px;color:#8b949e;margin-top:4px;">{_r1102.get("Insight","")}</div>'
                             f'</div>', unsafe_allow_html=True)

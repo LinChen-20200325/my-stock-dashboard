@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from tab_helpers import safe_get
+
 
 def render_tab_macro():
     # ─ Late imports（避免循環 import）─
@@ -2662,18 +2664,12 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     # ── 宏爺智能綜合結論 ─────────────────────────────────────────────────────
     _df_li_c = st.session_state.get('li_latest')
     if _df_li_c is not None and not _df_li_c.empty:
-        import pandas as _pd_li
         _last_li = _df_li_c.iloc[-1]
-        def _v(x):
-            try:
-                return None if (x is None or _pd_li.isna(x)) else x
-            except Exception:
-                return None
-        _fnet = _v(_last_li.get('外資大小'))
-        _pcr  = _v(_last_li.get('選PCR'))
-        _leek = _v(_last_li.get('韭菜指數'))
-        _top5 = _v(_last_li.get('前五大留倉'))
-        _opt  = _v(_last_li.get('外(選)'))
+        _fnet = safe_get(_last_li.get('外資大小'))
+        _pcr  = safe_get(_last_li.get('選PCR'))
+        _leek = safe_get(_last_li.get('韭菜指數'))
+        _top5 = safe_get(_last_li.get('前五大留倉'))
+        _opt  = safe_get(_last_li.get('外(選)'))
         _date = _last_li.get('日期','最新')
 
         _score = 0

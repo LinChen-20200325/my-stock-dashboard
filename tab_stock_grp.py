@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from tab_helpers import format_condition_emoji, parse_cash_flow_ratio
+
 
 def render_stock_grp():
     # ─ Late imports（避免循環 import）─
@@ -719,30 +721,18 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
                     _r110 = _surv_f.get('Rule_100_100_10', {})
                     _r110_sc = _status_color.get(_r110.get('Status', 'Fail'), '#f85149')
                     # 各分項勾叉（門檻：A>100% / B≥100% / C>10%，與 financial_health_engine:416/423/431 對齊）
-                    import re as _re_r110b
-                    def _r110_ok_b(_s, _thr, _strict):
-                        _ss = str(_s or '')
-                        if not _ss or 'N/A' in _ss:
-                            return None
-                        _mn = _re_r110b.search(r'(-?\d+(?:\.\d+)?)\s*%', _ss)
-                        if not _mn:
-                            return None
-                        _vn = float(_mn.group(1))
-                        return (_vn > _thr) if _strict else (_vn >= _thr)
-                    _a_ok = _r110_ok_b(_r110.get('Cash_Flow_Ratio',''), 100, True)
-                    _b_ok = _r110_ok_b(_r110.get('Cash_Flow_Adequacy',''), 100, False)
-                    _c_ok = _r110_ok_b(_r110.get('Cash_Reinvestment',''), 10, True)
-                    def _tk(x):
-                        return '✅' if x is True else ('❌' if x is False else '⚪')
+                    _a_ok = parse_cash_flow_ratio(_r110.get('Cash_Flow_Ratio',''), 100, strict=True)
+                    _b_ok = parse_cash_flow_ratio(_r110.get('Cash_Flow_Adequacy',''), 100, strict=False)
+                    _c_ok = parse_cash_flow_ratio(_r110.get('Cash_Reinvestment',''), 10, strict=True)
                     with _s_cols[2]:
                         st.markdown(
                             f'<div style="background:{_r110_sc}18;border:1px solid {_r110_sc}55;'
                             f'border-radius:8px;padding:10px;text-align:center;">'
                             f'<div style="font-size:11px;color:#8b949e;">🔄 100/100/10</div>'
                             f'<div style="font-size:11px;color:#c9d1d9;">'
-                            f'A{_tk(_a_ok)}{_r110.get("Cash_Flow_Ratio","N/A")} '
-                            f'B{_tk(_b_ok)}{_r110.get("Cash_Flow_Adequacy","N/A")} '
-                            f'C{_tk(_c_ok)}{_r110.get("Cash_Reinvestment","N/A")}</div>'
+                            f'A{format_condition_emoji(_a_ok)}{_r110.get("Cash_Flow_Ratio","N/A")} '
+                            f'B{format_condition_emoji(_b_ok)}{_r110.get("Cash_Flow_Adequacy","N/A")} '
+                            f'C{format_condition_emoji(_c_ok)}{_r110.get("Cash_Reinvestment","N/A")}</div>'
                             f'<div style="font-size:12px;font-weight:700;color:{_r110_sc};">{_r110.get("Status","?")}</div>'
                             f'<div style="font-size:10px;color:#8b949e;margin-top:4px;">{_r110.get("Insight","")}</div>'
                             f'</div>', unsafe_allow_html=True)
