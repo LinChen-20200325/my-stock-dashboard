@@ -307,22 +307,35 @@ def _render_propose_subtab() -> None:
 
 
 def _render_evaluate_subtab() -> None:
-    """🔍 評估我的組合 sub-tab"""
+    """🔍 評估我的組合 sub-tab — 讀取上方「組合配置」已輸入的持股，用真實股數估算月現金流。"""
     st.markdown('##### 🔍 評估你現有的 ETF 組合')
-    _input = st.text_area(
-        'ETF 代碼（逗號或換行分隔，需含 .TW / .TWO 後綴）',
-        value='0056.TW, 00919.TW, 00878.TW',
-        height=80, key='_grape_eval_input')
-    if not st.button('🍇 評估', key='_grape_btn_eval', type='primary'):
-        st.caption('輸入你的高股息 ETF 組合，系統會回報每月配息覆蓋率與現金流。')
+    _rows = st.session_state.get('etf_portfolio_rows')
+    if not _rows:
+        st.info('💡 請先到上方「📋 輸入持股組合」區塊輸入持股並點「計算組合」，本區會自動讀取你的真實股數估算月配息現金流。')
         return
-    import re as _re
-    _tickers = [_t.strip() for _t in _re.split(r'[,\n]', _input) if _t.strip()]
+
+    # 從 portfolio 持股拿台股 ETF（.TW/.TWO）+ 真實股數
+    _tickers: list[str] = []
+    _shares_map: dict[str, int] = {}
+    _skipped: list[str] = []
+    for _r in _rows:
+        _tk = (_r.get('ticker') or '').upper()
+        _sh = int(_r.get('shares') or 0)
+        if _tk.endswith('.TW') or _tk.endswith('.TWO'):
+            _tickers.append(_tk)
+            _shares_map[_tk] = _sh
+        else:
+            _skipped.append(_tk)
+
     if not _tickers:
-        st.info('請輸入至少 1 檔 ETF。')
+        st.warning('⚠️ 你的組合中沒有台股 ETF（需 .TW / .TWO 後綴），葡萄串領息法僅適用台股月配 ETF。')
         return
+    if _skipped:
+        st.caption(f'ℹ️ 已略過非台股代碼：{", ".join(_skipped)}')
+
+    st.caption(f'📊 評估中：{len(_tickers)} 檔台股 ETF｜總股數 {sum(_shares_map.values()):,} 股')
     with st.spinner('評估中…'):
-        _res = evaluate_income_ladder(_tickers)
+        _res = evaluate_income_ladder(_tickers, shares_map=_shares_map)
     if _res.get('_err'):
         st.info(_res['_err'])
         return
@@ -331,7 +344,7 @@ def _render_evaluate_subtab() -> None:
     _covered = _res['covered_months']
     _missing = sorted(_res['missing_months'])
     if len(_covered) >= 12:
-        st.success(f'✅ 完美覆蓋 12/12 月｜年現金流預估 {_res["annual_cashflow"]:,.0f} 元（每檔 1000 股）')
+        st.success(f'✅ 完美覆蓋 12/12 月｜年現金流預估 {_res["annual_cashflow"]:,.0f} 元（依實際持股股數）')
     else:
         st.warning(f'⚠️ Cover {len(_covered)}/12 月，缺月份：{_missing}')
     _m1, _m2, _m3 = st.columns(3)
@@ -340,7 +353,7 @@ def _render_evaluate_subtab() -> None:
     _m3.metric('年現金流', f'{_res["annual_cashflow"]:,.0f}')
     st.markdown('##### 📅 12 月份配息分布')
     _render_month_grid(_res['month_etfs'], _res['missing_months'])
-    st.markdown('##### 💰 月現金流預估（每檔預設 1000 股）')
+    st.markdown('##### 💰 月現金流預估（依實際持股股數）')
     _cf = _res['monthly_cashflow']
     _cf_df = pd.DataFrame(
         {'月份': [f'{m}月' for m in range(1, 13)],

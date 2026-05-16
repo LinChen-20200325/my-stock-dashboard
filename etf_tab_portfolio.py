@@ -170,6 +170,9 @@ def render_etf_portfolio(gemini_fn=None):
         r['actual_pct'] = round(r['current_value'] / total_value * 100, 2) if total_value > 0 else 0
         r['deviation']  = round(r['actual_pct'] - r['target_pct'], 2)
 
+    # ── 共享給下游模組（葡萄串領息法 / AI 評斷）──
+    st.session_state['etf_portfolio_rows'] = rows
+
     # ── 資產總覽卡（總成本 / 總現值 / 資本利得 / 已領配息 / 總損益）──
     _gain_color = '#3fb950' if total_gain >= 0 else '#f85149'
     _gain_sign  = '+' if total_gain >= 0 else ''

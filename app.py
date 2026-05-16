@@ -1380,7 +1380,7 @@ with tab_etf:
 # TAB: ETF 組合戰情室（4 區段整合：組合配置 + 歷史回測 + AI + 葡萄串）
 # ══════════════════════════════════════════════════════════════
 with tab_etf_grp:
-    # ── ① 組合配置與再平衡 ──
+    # ── ① 組合配置與再平衡（唯一輸入來源，下游模組共享 etf_portfolio_rows）──
     render_etf_portfolio(gemini_fn=gemini_call)
     st.markdown('<hr style="margin:32px 0;border-color:#30363d;">', unsafe_allow_html=True)
 
@@ -1388,12 +1388,12 @@ with tab_etf_grp:
     render_etf_backtest(gemini_fn=gemini_call)
     st.markdown('<hr style="margin:32px 0;border-color:#30363d;">', unsafe_allow_html=True)
 
-    # ── ③ AI 綜合評斷（總經連動）──
-    render_etf_ai(gemini_fn=gemini_call)
+    # ── ③ 葡萄串領息法（自動讀取持股做月配息評估）──
+    render_grape_ladder(gemini_fn=gemini_call)
     st.markdown('<hr style="margin:32px 0;border-color:#30363d;">', unsafe_allow_html=True)
 
-    # ── ④ 葡萄串領息法 ──
-    render_grape_ladder(gemini_fn=gemini_call)
+    # ── ④ AI 綜合評斷 + 自由提問（壓軸區，整合所有上方分析）──
+    render_etf_ai(gemini_fn=gemini_call)
 
 # ══════════════════════════════════════════════════════════════
 # TAB: 7% 高殖利率防禦網（Screener Mode）
