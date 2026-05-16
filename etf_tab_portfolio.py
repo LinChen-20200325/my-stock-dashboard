@@ -37,73 +37,75 @@ def render_etf_portfolio(gemini_fn=None):
     regime   = mkt_info.get('regime', 'neutral')
     macro_allocation_banner(regime)
 
-    st.markdown('#### 📋 輸入持股組合（格式：代號,股數,均價[,希望比例%][,類型]）')
-    st.caption('💡 第 4 欄「希望比例%」省略 → 以實際現值權重為目標；第 5 欄「核心/衛星」省略 → 依代號自動分類。'
-               '系統會自動以即時收盤價算現值、資本利得與已領配息。')
-    default_input = ("0050.TW,1000,135.50,40,核心\n"
-                     "00713.TW,500,82.30,30,核心\n"
-                     "BND,200,72.50,20,核心\n"
-                     "00878.TW,2000,20.10,10,核心")
-    raw       = st.text_area('組合輸入', value=default_input, height=130,
-                              key='etf_p_input', label_visibility='collapsed')
-    tolerance = st.slider('再平衡容忍偏離度（%）', 1, 15, 5, key='etf_p_tol')
-
-    if st.button('📊 計算組合', key='etf_p_btn', use_container_width=True):
-        st.session_state['etf_p_active'] = True
-
-    if not st.session_state.get('etf_p_active'):
-        st.info('💡 填入持股後點擊「計算組合」')
-        return
+    st.markdown('#### 📋 輸入持股組合')
+    st.caption('💡 表格欄位：**股票代號 / 持有張數 / 平均買入價格**。'
+               '系統自動：① 1 張 = 1000 股換算 ② 核心/衛星判讀 ③ 即時收盤價算現值、資本利得、已領配息。'
+               '可用「+」新增列、勾選後 Del 刪除列。')
 
     # MK 框架 #9：核心 / 衛星預設分類（高股息大型 / 全市場 / 債券 → 核心；其他 → 衛星）
     _CORE_TICKERS = {'0050','0051','0056','006208','00713','00878','00919','00929',
                      '00940','00946','00713B','00679B','00937B','BND','AGG','VTI',
                      'VOO','SPY','VT','SCHD','VEA','VWO','VNQ'}
     def _auto_role(tk: str) -> str:
-        code = tk.replace('.TWO', '').replace('.TW', '').upper()
+        code = (tk or '').replace('.TWO', '').replace('.TW', '').upper()
         return '核心' if code in _CORE_TICKERS else '衛星'
 
-    # ── 解析輸入：代號,股數,均價[,希望比例%][,類型] ───────────
+    # ── 結構化表單輸入（取代 text_area）─────────────────────
+    _default_df = pd.DataFrame({
+        '股票代號':       ['0050.TW', '00713.TW', 'BND', '00878.TW'],
+        '持有張數':       [1.0, 0.5, 0.2, 2.0],
+        '平均買入價格':   [135.50, 82.30, 72.50, 20.10],
+    })
+    edited_df = st.data_editor(
+        _default_df, num_rows='dynamic', hide_index=True,
+        use_container_width=True, key='etf_p_table',
+        column_config={
+            '股票代號':     st.column_config.TextColumn(
+                '股票代號', required=True, width='medium',
+                help='台股加 .TW / .TWO 後綴；海外 ETF 直接代號（如 BND、VOO）'),
+            '持有張數':     st.column_config.NumberColumn(
+                '持有張數', required=True, min_value=0.0, format='%.2f', width='small',
+                help='台股 1 張 = 1000 股；可填小數（如 0.2 張 = 200 股）'),
+            '平均買入價格': st.column_config.NumberColumn(
+                '平均買入價格', required=True, min_value=0.0, format='%.2f', width='small',
+                help='你過去買入此檔的成本均價'),
+        })
+    tolerance = st.slider('再平衡容忍偏離度（%）', 1, 15, 5, key='etf_p_tol')
+
+    if st.button('📊 計算組合', key='etf_p_btn', use_container_width=True):
+        st.session_state['etf_p_active'] = True
+
+    if not st.session_state.get('etf_p_active'):
+        st.info('💡 填好上方表格後點擊「計算組合」')
+        return
+
+    # ── 解析 data_editor 表格 → rows（1 張 = 1000 股換算）─────
     rows = []
-    for line in raw.strip().splitlines():
-        line = line.strip()
-        if not line or line.startswith('#'):
-            continue
-        parts = [p.strip() for p in line.split(',')]
-        if len(parts) < 3:
-            st.warning(f'⚠️ 欄位不足（至少需 代號,股數,均價）：{line}')
+    for _, _row in edited_df.iterrows():
+        _tk_raw = str(_row.get('股票代號') or '').strip().upper()
+        if not _tk_raw:
             continue
         try:
-            _tk        = parts[0].upper()
-            _shares    = float(parts[1])
-            _avg_price = float(parts[2])
-            # 第 4 欄：希望比例% 或 類型；第 5 欄：類型
-            _target_pct = None
-            _role = None
-            for _p in parts[3:5]:
-                if not _p:
-                    continue
-                if _p in ('核心', '衛星'):
-                    _role = _p
-                else:
-                    try:
-                        _target_pct = float(_p)
-                    except ValueError:
-                        pass
-            if _role is None:
-                _role = _auto_role(_tk)
-            rows.append({
-                'ticker':     _tk,
-                'shares':     _shares,
-                'avg_price':  _avg_price,
-                'cost':       _shares * _avg_price,
-                'target_pct': _target_pct,   # 可能 None，下面 fallback
-                'role':       _role,
-            })
-        except ValueError:
-            st.warning(f'⚠️ 無法解析（股數/均價需為數字）：{line}')
+            _lots      = float(_row.get('持有張數') or 0)
+            _avg_price = float(_row.get('平均買入價格') or 0)
+        except (TypeError, ValueError):
+            st.warning(f'⚠️ {_tk_raw} 張數/均價非數字，已略過')
+            continue
+        if _lots <= 0 or _avg_price <= 0:
+            st.warning(f'⚠️ {_tk_raw} 張數或均價為 0，已略過')
+            continue
+        _shares = _lots * 1000  # 1 張 = 1000 股
+        rows.append({
+            'ticker':     _tk_raw,
+            'lots':       _lots,
+            'shares':     _shares,
+            'avg_price':  _avg_price,
+            'cost':       _shares * _avg_price,
+            'target_pct': None,         # 不再有「希望比例」輸入 → 以實際現值權重為目標
+            'role':       _auto_role(_tk_raw),
+        })
     if not rows:
-        st.error('❌ 請輸入有效的持股資料')
+        st.error('❌ 請至少填入一筆有效持股（代號 + 張數 + 均價皆 > 0）')
         return
 
     # ── 批次抓現價 + 配息（每檔 yfinance 已有 @st.cache_data 護身）──
@@ -152,19 +154,11 @@ def render_etf_portfolio(gemini_fn=None):
     total_gain  = sum(r['capital_gain'] for r in rows)
     total_div   = sum(r['dividend_received'] for r in rows)
 
-    # 沒給 target_pct 的列 → 用實際現值權重補；給了的 → 校驗加總
-    _filled_target_sum = sum(r['target_pct'] for r in rows if r['target_pct'] is not None)
-    _missing_target = [r for r in rows if r['target_pct'] is None]
-    if _missing_target and _filled_target_sum < 100:
-        _remain = 100 - _filled_target_sum
-        _per    = _remain / len(_missing_target) if _missing_target else 0
-        for r in _missing_target:
-            r['target_pct'] = round(_per, 2)
-    elif _missing_target:
-        # 全靠實際權重做目標
-        for r in rows:
-            if r['target_pct'] is None:
-                r['target_pct'] = round(r['current_value'] / total_value * 100, 2) if total_value > 0 else 0
+    # target_pct 全為 None（新表格輸入無希望比例欄）→ 直接用實際現值權重作目標
+    # 偏離度 = 0，下游再平衡邏輯仍可運作（按實際權重平衡 = 不需動作）
+    for r in rows:
+        if r['target_pct'] is None:
+            r['target_pct'] = round(r['current_value'] / total_value * 100, 2) if total_value > 0 else 0
 
     for r in rows:
         r['actual_pct'] = round(r['current_value'] / total_value * 100, 2) if total_value > 0 else 0
@@ -210,6 +204,7 @@ def render_etf_portfolio(gemini_fn=None):
         'ETF':       r['ticker'],
         '名稱':       _etf_name(r['ticker']),
         '類型':       r.get('role', '—'),
+        '張數':       f'{r.get("lots", r["shares"]/1000):.2f}',
         '股數':       f'{int(r["shares"]):,}',
         '均價':       f'{r["avg_price"]:.2f}',
         '現價':       f'{r["current_price"]:.2f}' if r['current_price'] > 0 else '-',
@@ -218,7 +213,7 @@ def render_etf_portfolio(gemini_fn=None):
         '資本利得':   f'{"+" if r["capital_gain"]>=0 else ""}{r["capital_gain"]:,.0f}',
         '利得%':      f'{"+" if r["capital_gain_pct"]>=0 else ""}{r["capital_gain_pct"]:.2f}%',
         '已領配息':   f'+{r["dividend_received"]:,.0f}' if r['dividend_received'] > 0 else '-',
-        '希望比例%':  f'{r["target_pct"]:.1f}',
+        '目標比例%':  f'{r["target_pct"]:.1f}',
         '實際比例%':  f'{r["actual_pct"]:.1f}',
         '偏離度%':    f'{"+" if r["deviation"]>=0 else ""}{r["deviation"]:.1f}',
     } for r in rows])
