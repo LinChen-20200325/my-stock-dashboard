@@ -181,6 +181,72 @@ def render_etf_backtest(gemini_fn=None):
     c4.metric('夏普值',       f'{sharpe:.2f}')
     c5.metric('最大回撤',     f'{mdd:.1f}%')
 
+    # ── 五維風報雷達圖（組合 vs 基準）────────────────────────────
+    # 各維度正規化為 0-100 分數，越大越好（波動率/MDD 已反向處理）
+    def _norm_return(v, lo=-50, mid=0, hi=50):
+        if v >= hi: return 100
+        if v <= lo: return 0
+        if v >= mid: return 50 + (v - mid) / (hi - mid) * 50
+        return (v - lo) / (mid - lo) * 50
+
+    def _norm_lower_better(v, best=5, mid=20, worst=35):
+        v = abs(v)
+        if v <= best: return 100
+        if v >= worst: return 0
+        if v <= mid: return 100 - (v - best) / (mid - best) * 50
+        return 50 - (v - mid) / (worst - mid) * 50
+
+    _port_scores = [
+        _norm_return(cum_ret, lo=-50, mid=0, hi=80),
+        _norm_return(cagr, lo=-5, mid=5, hi=15),
+        _norm_lower_better(vol, best=8, mid=20, worst=35),
+        _norm_return(sharpe * 50, lo=-50, mid=50, hi=150),  # sharpe -1~3 → 0-100
+        _norm_lower_better(mdd, best=5, mid=20, worst=35),
+    ]
+    # 基準分數（從 bench_val 計算）
+    _bench_scores = None
+    if bench_val is not None and len(bench_val) > 10:
+        _bench_df  = pd.DataFrame({'Close': bench_val})
+        _b_cagr    = calc_cagr(_bench_df)
+        _b_sharpe  = calc_sharpe(_bench_df)
+        _b_mdd     = calc_mdd(_bench_df)
+        _b_vol     = round(float(bench_val.pct_change().dropna().std() * (252**0.5) * 100), 2)
+        _b_cum     = round((float(bench_val.iloc[-1]) - initial) / initial * 100, 2)
+        _bench_scores = [
+            _norm_return(_b_cum, lo=-50, mid=0, hi=80),
+            _norm_return(_b_cagr, lo=-5, mid=5, hi=15),
+            _norm_lower_better(_b_vol, best=8, mid=20, worst=35),
+            _norm_return(_b_sharpe * 50, lo=-50, mid=50, hi=150),
+            _norm_lower_better(_b_mdd, best=5, mid=20, worst=35),
+        ]
+
+    _radar_labels = ['累積報酬', 'CAGR', '低波動', '夏普值', '低回撤']
+    _fig_radar = go.Figure()
+    _fig_radar.add_trace(go.Scatterpolar(
+        r=_port_scores + [_port_scores[0]],
+        theta=_radar_labels + [_radar_labels[0]],
+        fill='toself', name='📦 ETF組合',
+        line=dict(color='#58a6ff', width=2),
+        fillcolor='rgba(88,166,255,0.25)'))
+    if _bench_scores is not None:
+        _fig_radar.add_trace(go.Scatterpolar(
+            r=_bench_scores + [_bench_scores[0]],
+            theta=_radar_labels + [_radar_labels[0]],
+            fill='toself', name=f'📊 {bench_ticker}（基準）',
+            line=dict(color='#3fb950', width=1.5, dash='dash'),
+            fillcolor='rgba(63,185,80,0.15)'))
+    _fig_radar.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 100],
+                            gridcolor='#30363d', tickfont=dict(color='#8b949e', size=9)),
+            angularaxis=dict(gridcolor='#30363d', tickfont=dict(color='#c9d1d9', size=11)),
+            bgcolor='#0d1117'),
+        paper_bgcolor='#0d1117', font=dict(color='#c9d1d9'),
+        height=380, margin=dict(l=40, r=40, t=20, b=20),
+        legend=dict(orientation='h', yanchor='bottom', y=-0.1))
+    st.plotly_chart(_fig_radar, width='stretch')
+    st.caption('💡 雷達圖：5 維風報指標正規化 0-100 分（面積越大越好）。波動率/最大回撤已反向，外圍=低波動低回撤。')
+
     # ── 績效評級總結卡（老師標準）──────────────────────────────
     _grade_pts = 0
     if cagr >= 10:
@@ -230,21 +296,71 @@ def render_etf_backtest(gemini_fn=None):
         _bt_act   = '評估是否增加股票型 ETF 比例以提升 CAGR'
     _teacher_conclusion('春哥', f'回測評級 {_grade_label}', _bt_concl, _bt_act)
 
-    # ── 個別 ETF 績效 ─────────────────────────────────────────
-    st.markdown('#### 📋 個別 ETF 績效')
-    indiv = []
+    # ── 個別 ETF 績效（4 圖比較）───────────────────────────────
+    st.markdown('#### 📋 個別 ETF 績效（4 維比較圖）')
+    _indiv_rows = []
     for t, w in weights.items():
         if t in prices.columns:
             df_i = pd.DataFrame({'Close': prices[t]})
             ret_series = prices[t].pct_change().dropna()
-            indiv.append({
-                'ETF': t, '權重': f'{w*100:.0f}%',
-                'CAGR': f'{calc_cagr(df_i):.2f}%',
-                '波動率': f'{round(float(ret_series.std()*(252**0.5)*100),2):.2f}%',
-                '最大回撤': f'{calc_mdd(df_i):.1f}%',
-                '夏普值': f'{calc_sharpe(df_i):.2f}',
+            _indiv_rows.append({
+                'ETF': t,
+                '權重': round(w * 100, 1),
+                'CAGR': round(calc_cagr(df_i), 2),
+                '波動率': round(float(ret_series.std() * (252**0.5) * 100), 2),
+                '最大回撤': round(calc_mdd(df_i), 1),
+                '夏普值': round(calc_sharpe(df_i), 2),
             })
-    st.dataframe(pd.DataFrame(indiv), use_container_width=True, hide_index=True)
+
+    if _indiv_rows:
+        from plotly.subplots import make_subplots
+        _tickers_i = [r['ETF'] for r in _indiv_rows]
+        _fig_indiv = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=('CAGR（年化報酬）', '年化波動率', '最大回撤（MDD）', '夏普值'),
+            vertical_spacing=0.18, horizontal_spacing=0.12)
+        # CAGR：越高越好 → 綠色，負值紅
+        _cagr_vals = [r['CAGR'] for r in _indiv_rows]
+        _fig_indiv.add_trace(go.Bar(
+            x=_tickers_i, y=_cagr_vals, name='CAGR',
+            marker_color=['#3fb950' if v >= 6 else ('#d29922' if v >= 0 else '#f85149') for v in _cagr_vals],
+            text=[f'{v:.2f}%' for v in _cagr_vals], textposition='outside'),
+            row=1, col=1)
+        # 波動率：越低越好 → 反向色階
+        _vol_vals = [r['波動率'] for r in _indiv_rows]
+        _fig_indiv.add_trace(go.Bar(
+            x=_tickers_i, y=_vol_vals, name='波動率',
+            marker_color=['#3fb950' if v <= 15 else ('#d29922' if v <= 25 else '#f85149') for v in _vol_vals],
+            text=[f'{v:.2f}%' for v in _vol_vals], textposition='outside'),
+            row=1, col=2)
+        # MDD：絕對值越小越好（負值往下長）→ 反向色階
+        _mdd_vals = [r['最大回撤'] for r in _indiv_rows]
+        _fig_indiv.add_trace(go.Bar(
+            x=_tickers_i, y=_mdd_vals, name='MDD',
+            marker_color=['#3fb950' if abs(v) <= 10 else ('#d29922' if abs(v) <= 20 else '#f85149') for v in _mdd_vals],
+            text=[f'{v:.1f}%' for v in _mdd_vals], textposition='outside'),
+            row=2, col=1)
+        # 夏普值：>= 1 優、>= 0.5 可、< 0.5 弱
+        _sharpe_vals = [r['夏普值'] for r in _indiv_rows]
+        _fig_indiv.add_trace(go.Bar(
+            x=_tickers_i, y=_sharpe_vals, name='夏普值',
+            marker_color=['#3fb950' if v >= 1 else ('#d29922' if v >= 0.5 else '#f85149') for v in _sharpe_vals],
+            text=[f'{v:.2f}' for v in _sharpe_vals], textposition='outside'),
+            row=2, col=2)
+        _fig_indiv.update_layout(
+            height=560, showlegend=False,
+            paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
+            font=dict(color='#c9d1d9', size=11),
+            margin=dict(l=20, r=20, t=50, b=20))
+        _fig_indiv.update_xaxes(gridcolor='#21262d', tickfont=dict(size=10))
+        _fig_indiv.update_yaxes(gridcolor='#21262d', tickfont=dict(size=10))
+        # 各 subplot 標題顏色
+        for _ann in _fig_indiv.layout.annotations:
+            _ann.font = dict(color='#8b949e', size=12)
+        st.plotly_chart(_fig_indiv, width='stretch')
+        # 權重小註腳，避免完全沒有數字脈絡
+        _weights_txt = '　'.join([f'{r["ETF"]} {r["權重"]:.0f}%' for r in _indiv_rows])
+        st.caption(f'⚖️ 權重：{_weights_txt}　｜　🟢 優秀 🟡 普通 🔴 待加強')
 
     # ── 稅費磨損提示 ──────────────────────────────────────────
     if apply_tax and total_tax_drag > 0:
