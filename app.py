@@ -67,6 +67,7 @@ from etf_dashboard import (  # noqa: E402
     render_sector_heatmap,
 )
 from health_inspector import render_data_health_raw  # noqa: E402
+from api_diagnostic import render_api_diagnostic  # noqa: E402
 from grape_ladder import render_grape_ladder  # noqa: E402
 from persona import TAIWAN_ADVISOR_PERSONA as _PERSONA  # noqa: E402
 
@@ -849,9 +850,13 @@ with st.sidebar:
 
     st.markdown('---')
     st.markdown('### 🔌 連線狀態')
-    _fm_tok  = str(st.secrets.get('FINMIND_TOKEN',  ''))
-    _gm_key  = str(st.secrets.get('GEMINI_API_KEY', ''))
-    _px_host = str(st.secrets.get('PROXY_HOST',     ''))
+    # [Fixed] 與 line 73-74 對齊：st.secrets 優先，os.environ fallback
+    _fm_tok  = str(st.secrets.get('FINMIND_TOKEN',  os.environ.get('FINMIND_TOKEN',  '')))
+    _gm_key  = str(st.secrets.get('GEMINI_API_KEY', os.environ.get('GEMINI_API_KEY', '')))
+    _px_host = str(st.secrets.get('PROXY_HOST',     os.environ.get('PROXY_HOST',     '')))
+    # PROXY_URL 與 PROXY_HOST 二擇一即可亮 ✅
+    if not _px_host:
+        _px_host = str(st.secrets.get('PROXY_URL', os.environ.get('PROXY_URL', '')))
     _sb_c1, _sb_c2, _sb_c3 = st.columns(3)
     with _sb_c1:
         if _fm_tok:
@@ -869,8 +874,9 @@ with st.sidebar:
         else:
             st.warning('Proxy —')
     if _px_host:
-        _px_port = str(st.secrets.get('PROXY_PORT', ''))
-        st.caption(f'🔒 {_px_host}:{_px_port}')
+        _px_port = str(st.secrets.get('PROXY_PORT', os.environ.get('PROXY_PORT', '')))
+        st.caption(f'🔒 {_px_host}:{_px_port}' if _px_port else '🔒 PROXY_URL 已設定')
+        st.caption('💡 詳細診斷請看「🔎 資料診斷」Tab 的 API Key 診斷面板')
     if st.button('🔍 測試連線', key='sb_conn_test', use_container_width=True):
         import requests as _rq_sb
         import urllib3 as _ul3
@@ -1406,6 +1412,8 @@ with tab_screener:
 # TAB: 資料診斷（Raw Data only）
 # ══════════════════════════════════════════════════════════════
 with tab_diag:
+    render_api_diagnostic()
+    st.markdown('---')
     render_data_health_raw()
 
 # ══════════════════════════════════════════════════════════════
