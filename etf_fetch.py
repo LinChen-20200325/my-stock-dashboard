@@ -244,6 +244,121 @@ def fetch_moneydj_expense_ratio(ticker: str):
         return None
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_etf_holdings(ticker: str):
+    """抓 ETF 成份股清單（個股名稱 → 權重 %）。台股 ETF 為主，海外 ETF 走 yfinance 兜底。
+
+    三段備援（按順序嘗試，任一成功即返回）：
+      1. yfinance `.funds_data.top_holdings` — 海外 ETF 主源；台股通常 None
+      2. MoneyDJ 三條 URL 並掃（持股頁面 pattern 各家不一）：
+         - Basic0007.xdjhtm（持股明細）
+         - Basic0008.xdjhtm（投資配置）
+         - RankA0001.xdjhtm（持股排名）
+      3. 全失敗回 None（UI 端標 ⚪ N/A）
+
+    Returns
+    -------
+    dict[str, float] | None
+        key=個股名稱（中/英文），value=權重百分比（如 5.23 代表 5.23%）
+        無資料 / 抓取失敗回 None。
+
+    Cache
+    -----
+    TTL 86400 秒（1 日），因 ETF 成份股月度才更新。
+    """
+    import re as _re_h
+    _t = (ticker or '').replace('.tw', '.TW').strip()
+    if not _t:
+        return None
+    _t_yf = _t if '.' in _t else (f'{_t}.TW' if _t.isdigit() else _t)
+    _t_mdj = _t_yf  # MoneyDJ etfid 同 yfinance ticker
+
+    # ── 1. yfinance funds_data（海外 ETF 主源）──────────────────
+    try:
+        _yt = yf.Ticker(_t_yf)
+        _fd = getattr(_yt, 'funds_data', None)
+        if _fd is not None:
+            _th = getattr(_fd, 'top_holdings', None)
+            if _th is not None and hasattr(_th, 'iterrows') and not _th.empty:
+                _out = {}
+                for _idx, _row in _th.iterrows():
+                    _name = str(_row.get('Name', _idx) or _idx).strip()
+                    _w_raw = _row.get('Holding Percent', _row.get('% of Net Assets', None))
+                    if _w_raw is None or _name == '':
+                        continue
+                    try:
+                        _w = float(_w_raw)
+                    except (TypeError, ValueError):
+                        continue
+                    # yfinance 多以小數表示（0.05 = 5%）；> 1 視為已是百分比
+                    if _w <= 1.5:
+                        _w = _w * 100
+                    if _w > 0:
+                        _out[_name] = round(_w, 4)
+                if _out:
+                    print(f'[Holdings/yf] ✅ {_t_yf} {len(_out)} 檔')
+                    return _out
+    except Exception as _ey:
+        print(f'[Holdings/yf] {_t_yf}: {type(_ey).__name__}: {_ey}')
+
+    # ── 2. MoneyDJ 三條 URL 嘗試（台股 ETF 主源）────────────────
+    _hdrs = {
+        'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                       '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8',
+        'Referer': 'https://www.moneydj.com/',
+    }
+    _urls = [
+        f'https://www.moneydj.com/ETF/X/Basic/Basic0007.xdjhtm?etfid={_t_mdj}',
+        f'https://www.moneydj.com/ETF/X/Basic/Basic0008.xdjhtm?etfid={_t_mdj}',
+        f'https://www.moneydj.com/ETF/X/Basic/RankA0001.xdjhtm?etfid={_t_mdj}',
+    ]
+    for _url in _urls:
+        try:
+            try:
+                from curl_cffi import requests as _cffi_h
+                _r = _cffi_h.get(_url, impersonate='chrome124', timeout=15)
+            except Exception:
+                import requests as _rq_h
+                _r = _rq_h.get(_url, headers=_hdrs, timeout=15, verify=False)
+            if _r.status_code != 200:
+                print(f'[Holdings/MDJ] {_t_mdj} {_url[-30:]}: HTTP {_r.status_code}')
+                continue
+            _txt = _r.text
+            # 寬鬆 regex：個股名（中文/英數 2-20 字元）+ 後續 30 字內出現「X.XX%」
+            # MoneyDJ Basic 系列表格通常 <td>個股名</td>...<td>X.XX%</td> 形式
+            _stocks = {}
+            # pattern: <td>個股名</td>\s*<td>\d+\.\d+%</td>  — 但 HTML 結構各 page 不同
+            # 寬鬆掃：每行抓「中文/英文名稱 + 緊鄰百分比」
+            for _m in _re_h.finditer(
+                r'>([一-鿿 A-Z0-9&\.\-]{2,30})</[^>]+>[^<]*<[^>]+>\s*(\d{1,2}\.\d{1,3})\s*%',
+                _txt
+            ):
+                _nm = _m.group(1).strip()
+                # 過濾雜訊（純數字、表頭關鍵字）
+                if (_nm and not _nm.isdigit() and not _nm.replace('.', '').isdigit()
+                        and _nm not in ('持股比例', '比例', '持股比重', '權重', '個股名稱', '名稱')
+                        and len(_nm) >= 2):
+                    try:
+                        _w = float(_m.group(2))
+                        if 0 < _w <= 100 and _nm not in _stocks:
+                            _stocks[_nm] = _w
+                    except ValueError:
+                        continue
+                if len(_stocks) >= 50:
+                    break
+            if _stocks:
+                print(f'[Holdings/MDJ] ✅ {_t_mdj} {len(_stocks)} 檔 ({_url[-30:]})')
+                return _stocks
+        except Exception as _eh:
+            print(f'[Holdings/MDJ] {_t_mdj} {_url[-30:]}: {type(_eh).__name__}: {_eh}')
+            continue
+
+    print(f'[Holdings] ❌ {_t} — yf/MoneyDJ 三條 URL 全失敗')
+    return None
+
+
 def get_etf_expense_ratio_safe(ticker: str):
     """安全讀取 ETF 費用率：SITCA → MoneyDJ → yfinance 三段備援；缺失回 None 不崩潰"""
     # 1. 台股 ETF（純數字代號）優先走 SITCA（投信投顧公會官方），yfinance 對 .TW 票常 stale

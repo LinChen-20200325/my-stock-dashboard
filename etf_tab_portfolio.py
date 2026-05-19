@@ -30,8 +30,9 @@ def render_etf_portfolio(gemini_fn=None):
     from unified_decision import render_unified_decision
     from etf_dashboard import (
         _check_sector_exposure, _colored_box, _compute_etf_warroom_row,
-        _plot_correlation, _teacher_conclusion,
-        fetch_etf_dividends, fetch_etf_info, fetch_etf_price,
+        _plot_correlation, _plot_holdings_overlap, _teacher_conclusion,
+        build_holdings_overlap_matrix,
+        fetch_etf_dividends, fetch_etf_holdings, fetch_etf_info, fetch_etf_price,
         macro_allocation_banner,
     )
 
@@ -387,6 +388,8 @@ def render_etf_portfolio(gemini_fn=None):
 
     # ── 相關係數矩陣 ──────────────────────────────────────────
     st.markdown('#### 🔗 相關係數矩陣（近1年）')
+    st.caption('💡 此矩陣用「日報酬率」算 Pearson 相關係數，'
+               '反映**價格走勢同步度**（不看持股名單）。值越接近 1 表示分散效益越差。')
     tickers = [r['ticker'] for r in rows]
     ret_dict = {}
     with st.spinner('計算相關係數...'):
@@ -407,6 +410,64 @@ def render_etf_portfolio(gemini_fn=None):
                         f'相關係數 {val:.2f} > 0.85，資產同質性過高', 'red')
     else:
         st.warning('資料不足，無法計算相關係數')
+
+    # ── 持股 Overlap 矩陣（PR — claude/etf-holdings-overlap）────
+    st.markdown('#### 🧬 持股 Overlap 矩陣（成份股重疊度）')
+    st.caption('💡 與上方「價格相關」對照看：價格相關高可能因市場連動（如全市場股災），'
+               '但**持股 overlap 高**代表組合在「真正持有的股票」層面高度雷同 — '
+               '即使換成不同名稱的 ETF，本質上也沒分散到。')
+    _ov_method = st.radio(
+        '演算法',
+        ('權重 Overlap%（業界標準）', 'Jaccard 集合重疊（不看權重）'),
+        horizontal=True, key='ov_method_radio',
+        help='權重 Overlap%：兩 ETF 共同持股取較小權重加總；Jaccard：|A∩B|/|A∪B| 只看股票名單'
+    )
+    _method_key = 'jaccard' if 'Jaccard' in _ov_method else 'weight'
+    _h_dict = {}
+    _h_miss = []
+    with st.spinner('抓取成份股清單（首次約 10-20 秒，之後 1 日快取）...'):
+        for t in tickers:
+            _h = fetch_etf_holdings(t)
+            if _h:
+                _h_dict[t] = _h
+            else:
+                _h_miss.append(t)
+    if _h_miss:
+        st.warning(f'⚪ 以下 ETF 拿不到成份股，對應行列顯示 N/A：{", ".join(_h_miss)}'
+                   f'（MoneyDJ 暫無資料或為新 ETF）')
+    _valid_count = len(_h_dict)
+    if _valid_count >= 2:
+        _ov_mat = build_holdings_overlap_matrix(_h_dict, method=_method_key)
+        # 補齊缺資料 ETF（讓矩陣 ticker 順序與上方價格矩陣一致）
+        for _t_miss in _h_miss:
+            if _t_miss not in _ov_mat.index:
+                _ov_mat.loc[_t_miss] = np.nan
+                _ov_mat[_t_miss]     = np.nan
+        _ov_mat = _ov_mat.reindex(index=tickers, columns=tickers)
+        _plot_holdings_overlap(
+            _ov_mat,
+            title=f'{"權重 Overlap%" if _method_key == "weight" else "Jaccard%"}（成份股 N={_valid_count}/{len(tickers)}）'
+        )
+        # 同質性警示（門檻：權重 > 30%；Jaccard > 50%）
+        _threshold = 30.0 if _method_key == 'weight' else 50.0
+        _warn_lines = []
+        for i in range(len(_ov_mat)):
+            for j in range(i + 1, len(_ov_mat)):
+                val = _ov_mat.iloc[i, j]
+                if pd.notna(val) and val > _threshold:
+                    _warn_lines.append(
+                        f'⚠️ <b>{_ov_mat.index[i]} × {_ov_mat.columns[j]}</b> '
+                        f'{val:.1f}% > {_threshold:.0f}%，建議擇一保留'
+                    )
+        if _warn_lines:
+            _colored_box('<br>'.join(_warn_lines), 'red')
+        else:
+            st.success(f'✅ 任兩檔 ETF 持股 {"權重重疊" if _method_key == "weight" else "Jaccard 重疊"} '
+                       f'皆 < {_threshold:.0f}%，組合分散度健康。')
+    elif _valid_count == 1:
+        st.info('⚪ 僅 1 檔 ETF 抓到成份股，無法兩兩比對。')
+    else:
+        st.warning('⚪ 所有 ETF 都抓不到成份股清單，無法計算持股重疊（MoneyDJ 端點可能變動）。')
 
     # ── 壓力測試（S&P500 下跌20%）────────────────────────────
     st.markdown('#### 🧨 壓力測試（模擬 S&P 500 下跌 20%）')

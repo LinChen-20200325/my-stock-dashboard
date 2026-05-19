@@ -463,3 +463,103 @@ def compute_etf_peer_ranking(ticker: str, periods: tuple = (63, 126, 252)) -> di
         print(f'[peer-rank] {ticker} ❌ {type(_e).__name__}: {_e}')
         _tb_pr.print_exc()
         return {'_err': f'{type(_e).__name__}', 'category': _category, 'peers': _peers}
+
+
+# ══════════════════════════════════════════════════════════════
+# 持股重疊度（Holdings Overlap）— 純函式，零外部依賴
+# ══════════════════════════════════════════════════════════════
+def calc_holdings_overlap_pct(h1, h2):
+    """權重 Overlap%：兩 ETF 共同持股、取較小權重加總。業界標準同質性指標。
+
+    公式：Σ min(w_A_i, w_B_i)  for i in (A ∩ B)
+
+    語意：兩檔 ETF 同一支股票，A 配 5%、B 配 10% → 只算 5%（重疊部分）。
+    結果 0-100%，數值越高表示組合越同質。
+
+    Parameters
+    ----------
+    h1, h2 : dict[str, float] | None
+        個股名 → 權重百分比（如 5.0 表示 5%）。None/空 dict 回 0.0。
+
+    Returns
+    -------
+    float  0-100，已四捨五入到小數點 2 位。
+    """
+    if not h1 or not h2:
+        return 0.0
+    _common = set(h1.keys()) & set(h2.keys())
+    if not _common:
+        return 0.0
+    _overlap = 0.0
+    for _k in _common:
+        try:
+            _overlap += min(float(h1[_k]), float(h2[_k]))
+        except (TypeError, ValueError):
+            continue
+    return round(min(_overlap, 100.0), 2)
+
+
+def calc_jaccard_overlap(h1, h2):
+    """Jaccard 集合重疊：|A ∩ B| / |A ∪ B| × 100%。
+
+    只看「有沒有同一支股票」，**完全忽略權重**。適合比較持股清單骨架是否雷同。
+    與 `calc_holdings_overlap_pct` 互補：
+      - Jaccard 高 + Overlap 低 → 持股名單雷同但權重分布差異大
+      - Jaccard 低 + Overlap 高 → 少數共同持股被重壓（風險集中）
+      - 兩者都高 → 同質性極高，分散效益差
+
+    Parameters
+    ----------
+    h1, h2 : dict[str, float] | None | iterable
+        只取 keys（個股名）。None/空回 0.0。
+
+    Returns
+    -------
+    float  0-100，已四捨五入到小數點 2 位。
+    """
+    if not h1 or not h2:
+        return 0.0
+    _s1 = set(h1.keys() if hasattr(h1, 'keys') else h1)
+    _s2 = set(h2.keys() if hasattr(h2, 'keys') else h2)
+    _union = _s1 | _s2
+    if not _union:
+        return 0.0
+    return round(len(_s1 & _s2) / len(_union) * 100, 2)
+
+
+def build_holdings_overlap_matrix(holdings_dict, method='weight'):
+    """建立 ETF × ETF 持股重疊矩陣（0-100%）。對角線恆為 100。
+
+    Parameters
+    ----------
+    holdings_dict : dict[str, dict[str, float] | None]
+        key=ETF ticker，value=該 ETF 的成份股字典（calc_holdings_overlap_pct 的輸入）。
+        value 為 None / 空者：該 ETF 對應行列全標 NaN（UI 端顯示為灰色 N/A）。
+    method : 'weight' | 'jaccard'
+        'weight' → 用 `calc_holdings_overlap_pct`（業界標準）
+        'jaccard' → 用 `calc_jaccard_overlap`（集合重疊）
+
+    Returns
+    -------
+    pandas.DataFrame  N×N 對稱矩陣，index/columns 都是 ticker。
+    """
+    import pandas as _pd
+    import numpy as _np
+    _tickers = list(holdings_dict.keys())
+    _func = calc_jaccard_overlap if method == 'jaccard' else calc_holdings_overlap_pct
+    _n = len(_tickers)
+    _mat = _np.full((_n, _n), _np.nan, dtype=float)
+    for _i, _ta in enumerate(_tickers):
+        _ha = holdings_dict.get(_ta)
+        if not _ha:
+            continue
+        _mat[_i, _i] = 100.0
+        for _j in range(_i + 1, _n):
+            _tb = _tickers[_j]
+            _hb = holdings_dict.get(_tb)
+            if not _hb:
+                continue
+            _v = _func(_ha, _hb)
+            _mat[_i, _j] = _v
+            _mat[_j, _i] = _v
+    return _pd.DataFrame(_mat, index=_tickers, columns=_tickers)

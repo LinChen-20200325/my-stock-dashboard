@@ -18,6 +18,7 @@ from etf_fetch import (  # noqa: F401
     fetch_etf_price, fetch_etf_dividends, fetch_etf_info,
     fetch_sitca_expense_ratio, fetch_moneydj_expense_ratio,
     get_etf_expense_ratio_safe,
+    fetch_etf_holdings,
     _NAV_MIN, _NAV_MAX, _safe_float,
     fetch_etf_nav_history, _fetch_sector_returns,
 )
@@ -29,13 +30,14 @@ from etf_calc import (  # noqa: F401
     check_vcp_signal, calc_premium_discount,
     calc_tracking_error, calc_mdd, calc_cagr, calc_sharpe,
     auto_detect_benchmark, compute_etf_peer_ranking,
+    calc_holdings_overlap_pct, calc_jaccard_overlap, build_holdings_overlap_matrix,
 )
 
 # ── render 層 ────────────────────────────────────────────────
 from etf_render import (  # noqa: F401
     MACRO_ALLOC, MACRO_DESC,
     macro_allocation_banner, _colored_box, _teacher_conclusion,
-    _plot_etf_chart, _plot_correlation, _render_bias,
+    _plot_etf_chart, _plot_correlation, _plot_holdings_overlap, _render_bias,
     _ETF_SECTOR_MAP, _check_sector_exposure,
     _render_monte_carlo, _etf_ai_backtest,
     _US_SECTORS, _TW_SECTORS, _PERIOD_MAP,

@@ -145,6 +145,35 @@ def _plot_correlation(corr: pd.DataFrame) -> None:
     st.plotly_chart(fig, width='stretch')
 
 
+def _plot_holdings_overlap(mat: pd.DataFrame, title: str = '') -> None:
+    """持股 Overlap 熱力圖：0-100% 單向配色（白→紅，越紅越重疊）。
+
+    與 `_plot_correlation` 的差異：
+      - 值域 0-100（非 -1 到 1）；不需 zmid
+      - 單向 colorscale（紅色越深越同質），跟報酬相關矩陣視覺區分
+      - NaN 灰色顯示（資料拿不到的 ETF）
+    """
+    labels = list(mat.columns)
+    z      = mat.values.tolist()
+    text   = [[(f'{v:.1f}' if pd.notna(v) else 'N/A') for v in row] for row in z]
+    fig = go.Figure(go.Heatmap(
+        z=z, x=labels, y=labels,
+        text=text, texttemplate='%{text}',
+        colorscale=[[0.0, '#0d1117'], [0.3, '#5a2a1e'],
+                    [0.6, '#a73c2a'], [1.0, '#f85149']],
+        zmin=0, zmax=100,
+        hoverongaps=False,
+        colorbar=dict(thickness=10, title=dict(text='%', font=dict(size=11))),
+    ))
+    fig.update_layout(
+        template='plotly_dark', height=320,
+        title=title if title else None,
+        margin=dict(l=0, r=0, t=30 if title else 10, b=0),
+        paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
+    )
+    st.plotly_chart(fig, width='stretch')
+
+
 def _render_bias(df: pd.DataFrame, ticker: str) -> None:
     """BIAS 乖離率：(Close - MAn) / MAn × 100%，顯示 MA20/MA60/MA120"""
     if df is None or len(df) < 20:
