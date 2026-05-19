@@ -47,11 +47,13 @@ def render_etf_portfolio(gemini_fn=None):
                '可用「+」新增列、勾選後 Del 刪除列。')
 
     # ── 結構化表單輸入（取代 text_area）─────────────────────
-    _default_df = pd.DataFrame({
-        '股票代號':       ['0050.TW', '00713.TW', 'BND', '00878.TW'],
-        '持有張數':       [1.0, 0.5, 0.2, 2.0],
-        '平均買入價格':   [135.50, 82.30, 72.50, 20.10],
-    })
+    _default_df = pd.DataFrame(
+        st.session_state.get('etf_p_loaded_df') or {
+            '股票代號':       ['0050.TW', '00713.TW', 'BND', '00878.TW'],
+            '持有張數':       [1.0, 0.5, 0.2, 2.0],
+            '平均買入價格':   [135.50, 82.30, 72.50, 20.10],
+        }
+    )
     edited_df = st.data_editor(
         _default_df, num_rows='dynamic', hide_index=True,
         use_container_width=True, key='etf_p_table',
@@ -66,6 +68,10 @@ def render_etf_portfolio(gemini_fn=None):
                 '平均買入價格', required=True, min_value=0.0, format='%.2f', width='small',
                 help='你過去買入此檔的成本均價'),
         })
+
+    # ── 雲端儲存（Google Sheet）─────────────────────────────
+    _render_cloud_storage(edited_df)
+
     tolerance = st.slider('再平衡容忍偏離度（%）', 1, 15, 5, key='etf_p_tol')
 
     if st.button('📊 計算組合', key='etf_p_btn', use_container_width=True):
@@ -718,3 +724,107 @@ def render_etf_portfolio(gemini_fn=None):
             '大盤狀態':                  regime,
         },
     })
+
+
+def _render_cloud_storage(edited_df):
+    """💾 Google Sheet 雲端儲存 UI（expander 折疊）。
+
+    Args:
+        edited_df: data_editor 回傳的當下表格 DataFrame（含使用者剛編輯後的內容）
+
+    - 未設定 secrets：顯示提示連到 SOP
+    - 已設定：提供「載入既有 / 儲存當前 / 刪除」三組操作
+    """
+    import gsheet_portfolio as _gsp
+
+    with st.expander('💾 雲端儲存 (Google Sheet)', expanded=False):
+        if not _gsp.is_configured():
+            st.warning(
+                '⚠️ 尚未設定 Google Sheet 憑證。'
+                '需在 `.streamlit/secrets.toml` 加上 `portfolio_sheet_id` 與 `[gcp_service_account]`。'
+                '設定方式請見 README 或詢問管理員。'
+            )
+            return
+
+        # ── 載入既有組合 ──
+        try:
+            names = _gsp.list_portfolios()
+        except Exception as e:
+            st.error(f'❌ 無法連線到 Google Sheet：{e}')
+            return
+
+        _c1, _c2, _c3 = st.columns([2, 1, 1])
+        if names:
+            _sel = _c1.selectbox('載入既有組合', options=['—'] + names,
+                                  key='etf_p_load_sel')
+            if _c2.button('📂 載入', key='etf_p_load_btn',
+                           use_container_width=True,
+                           disabled=(_sel == '—')):
+                try:
+                    _loaded = _gsp.load_portfolio(_sel)
+                except Exception as e:
+                    st.error(f'❌ 載入失敗：{e}')
+                else:
+                    if not _loaded:
+                        st.warning(f'⚠️ 組合「{_sel}」是空的')
+                    else:
+                        st.session_state['etf_p_loaded_df'] = {
+                            '股票代號':     [r['ticker'] for r in _loaded],
+                            '持有張數':     [r['lots'] for r in _loaded],
+                            '平均買入價格': [r['avg_price'] for r in _loaded],
+                        }
+                        st.session_state.pop('etf_p_table', None)
+                        st.session_state['etf_p_active'] = False
+                        st.success(f'✅ 已載入「{_sel}」共 {len(_loaded)} 檔，請按下方「📊 計算組合」')
+                        st.rerun()
+            if _c3.button('🗑️ 刪除', key='etf_p_del_btn',
+                           use_container_width=True,
+                           disabled=(_sel == '—')):
+                st.session_state['_etf_p_pending_del'] = _sel
+            if st.session_state.get('_etf_p_pending_del'):
+                _tgt = st.session_state['_etf_p_pending_del']
+                _cc1, _cc2 = st.columns(2)
+                if _cc1.button(f'⚠️ 確認刪除「{_tgt}」',
+                                key='etf_p_del_confirm',
+                                use_container_width=True):
+                    try:
+                        _n = _gsp.delete_portfolio(_tgt)
+                    except Exception as e:
+                        st.error(f'❌ 刪除失敗：{e}')
+                    else:
+                        st.session_state.pop('_etf_p_pending_del', None)
+                        st.success(f'✅ 已刪除「{_tgt}」（{_n} 筆持股）')
+                        st.rerun()
+                if _cc2.button('取消', key='etf_p_del_cancel',
+                                use_container_width=True):
+                    st.session_state.pop('_etf_p_pending_del', None)
+                    st.rerun()
+        else:
+            _c1.info('💡 雲端尚無儲存的組合，請於下方填好表格後按「💾 儲存當前」')
+
+        st.markdown('---')
+
+        # ── 儲存當前組合 ──
+        _s1, _s2 = st.columns([3, 1])
+        _name = _s1.text_input('組合名稱', value='',
+                                placeholder='例如：攻擊組合 / 存股組合 / 老婆帳戶',
+                                key='etf_p_save_name')
+        if _s2.button('💾 儲存當前', key='etf_p_save_btn',
+                       use_container_width=True,
+                       disabled=(not _name.strip())):
+            if edited_df is None or len(edited_df) == 0:
+                st.warning('⚠️ 目前表格為空，請先填入持股')
+            else:
+                _rows_to_save = []
+                for _r in edited_df.to_dict('records'):
+                    _rows_to_save.append({
+                        'ticker':    str(_r.get('股票代號') or '').strip().upper(),
+                        'lots':      _r.get('持有張數'),
+                        'avg_price': _r.get('平均買入價格'),
+                    })
+                try:
+                    _n = _gsp.save_portfolio(_name, _rows_to_save)
+                except Exception as e:
+                    st.error(f'❌ 儲存失敗：{e}')
+                else:
+                    st.success(f'✅ 已儲存「{_name}」共 {_n} 檔到 Google Sheet')

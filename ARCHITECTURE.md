@@ -672,6 +672,16 @@ ETF 回測子頁（render_etf_backtest）額外流程：
 - 全清快取保證「禁用暫存資料、全部都要重新下載」的用戶意圖落實
 - `chips_loaded=True` query_params 同步機制仍保留（WebSocket 重連恢復用）
 
+#### 頂部總經指南針：按鈕觸發即時抓取（PR #4，取代 15 分鐘 session_state 自動快取）
+
+`app.py:1073-1110` `render_macro_compass()` 渲染頂部三卡（VIX × 10Y × S&P 500 vs 60MA）。
+
+**演進**：
+- 舊：進頁觸發 `fetch_macro_compass()`，結果以 15 分鐘 TTL 存 `st.session_state['_macro_compass_cache']`；下次進頁直接讀快取，避免重複打 yfinance。
+- **PR #4**：進頁不抓資料；右上「📡 抓取最新 / 🔄 重抓」按鈕觸發 `_do_fetch()` callback，按了才寫 cache。
+
+**設計理由**：避免「進頁顯示上次抓到的舊值」誤判 — 收盤後、盤前、離線時的過時數字會讓使用者以為是當下行情。改成按鈕觸發後，**按的當下＝盤面當下＝決策當下真實狀態**，語意一致。副標動態顯示「即將抓取（無快取）」or「更新於 HH:MM:SS」讓資料新鮮度可追溯。
+
 > **融資維持率已於 v10.54.0 移除**：原三段備援（TWSE MI_MARGN / wantgoo / OpenAPI）
 > 因 Streamlit Cloud 不在台灣 IP 段，透過代理仍經常 8s+ 失敗，且 v4 引擎的
 > `is_margin_danger` 分支貢獻有限，整段拆除以瘦身冷啟動。
