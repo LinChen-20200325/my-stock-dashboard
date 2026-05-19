@@ -920,7 +920,9 @@ def _render_oauth_panel(_gsp) -> bool:
         _sid_now = str(st.session_state.get('portfolio_sheet_id', '') or '').strip()
         if _cur_title:
             st.caption(f'📂 **目前工作中**：「{_cur_title}」　·　ID `{_sid_now[:14]}…`')
-        with st.expander('📝 改名目前 Sheet', expanded=False):
+        # 改名 UI（不用 expander — 已在 _render_cloud_storage 的 expander 內，
+        # streamlit 不允許 expander 巢狀；改用 checkbox toggle）
+        if st.checkbox('📝 改名目前 Sheet', key='etf_p_rename_toggle', value=False):
             _rn_c1, _rn_c2 = st.columns([3, 1])
             _rn_new = _rn_c1.text_input(
                 '新名稱', value=_cur_title,
