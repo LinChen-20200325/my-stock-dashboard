@@ -30,8 +30,9 @@ def render_etf_portfolio(gemini_fn=None):
     from unified_decision import render_unified_decision
     from etf_dashboard import (
         _check_sector_exposure, _colored_box, _compute_etf_warroom_row,
-        _plot_correlation, _plot_holdings_overlap, _teacher_conclusion,
-        build_holdings_overlap_matrix,
+        _plot_correlation, _plot_holdings_overlap, _render_weakness_table,
+        _teacher_conclusion,
+        build_holdings_overlap_matrix, compute_etf_weakness_row,
         fetch_etf_dividends, fetch_etf_holdings, fetch_etf_info, fetch_etf_price,
         macro_allocation_banner,
     )
@@ -468,6 +469,36 @@ def render_etf_portfolio(gemini_fn=None):
         st.info('⚪ 僅 1 檔 ETF 抓到成份股，無法兩兩比對。')
     else:
         st.warning('⚪ 所有 ETF 都抓不到成份股清單，無法計算持股重疊（MoneyDJ 端點可能變動）。')
+
+    # ── 主動 ETF 弱勢度檢測（PR — claude/etf-weakness-manager）──
+    # Gemini 邏輯：大跌時跌得比大盤深 + 反彈時漲得比大盤慢 + 連兩季輸盤 = 該換
+    st.markdown('#### 🎯 主動 ETF 弱勢度檢測（vs 大盤被動式）')
+    st.caption('💡 主動式 ETF 你付 1% 經理費，**就該打贏大盤**。如果近1年大跌時它跌更深、'
+               '反彈時它漲更慢，連 2 季輸盤 → 該考慮換到被動式（如 0050）。'
+               '⏳ 但若**剛換新經理人 <6 個月**，建議再給時間觀察。')
+    _w_rows = []
+    with st.spinner('檢測弱勢度（含經理人查詢，首次約 5-15 秒）...'):
+        for _r in rows:
+            _w_rows.append(compute_etf_weakness_row(_r['ticker'], _r.get('name', '')))
+    if _w_rows:
+        _render_weakness_table(_w_rows)
+        # 換股建議匯總
+        _switch_targets = [r for r in _w_rows
+                           if r.get('主被動') == '主動式' and (r.get('連敗季數') or 0) >= 2]
+        if _switch_targets:
+            _lines = []
+            for _r in _switch_targets:
+                _mgr_note = (f'（⏳ 新經理人 {_r["任期"]}，可再觀察）'
+                             if isinstance(_r.get('任期'), str) and '個月' in _r['任期']
+                             and any(ch.isdigit() for ch in _r['任期'])
+                             and int(''.join(filter(str.isdigit, _r['任期'].split('個月')[0]))) < 6
+                             else '')
+                _lines.append(
+                    f'🚨 <b>{_r["代號"]} {_r["名稱"]}</b> 已連續 {_r["連敗季數"]} 季輸 '
+                    f'{_r.get("benchmark", "大盤")} — 經理人 {_r["經理人"]} '
+                    f'(任期 {_r["任期"]}){_mgr_note}'
+                )
+            _colored_box('<br>'.join(_lines), 'red')
 
     # ── 壓力測試（S&P500 下跌20%）────────────────────────────
     st.markdown('#### 🧨 壓力測試（模擬 S&P 500 下跌 20%）')

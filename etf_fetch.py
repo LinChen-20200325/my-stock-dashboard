@@ -359,6 +359,111 @@ def fetch_etf_holdings(ticker: str):
     return None
 
 
+# ══════════════════════════════════════════════════════════════
+# 主動式 ETF 判別 + 經理人查詢（PR — claude/etf-weakness-manager）
+# ══════════════════════════════════════════════════════════════
+# 主動式台股 ETF 白名單（代號末多帶字母 A/D/T；2024-2026 元大/復華/野村等募集）
+# 補：純數字代號的主動式 ETF（如未來新版）需手動加進來
+_ACTIVE_TW_ETF_WHITELIST = {
+    # 元大主動式系列（2024 Q4 ~ 2026）
+    '00980A', '00982A', '00984A', '00989A', '00992A',
+    '00982T', '00980D',
+    # 復華 / 國泰 / 中信 / 野村 主動式（補充清單，依公告陸續加入）
+    '00981A', '00983A', '00985A', '00986A', '00987A',
+    '00988A', '00990A', '00991A', '00993A', '00994A',
+    '00995A', '00996A', '00997A',
+}
+
+
+def is_active_etf(ticker: str) -> bool:
+    """判別 ETF 是主動式 (Active) 還是被動式 (Passive)。
+
+    判別優先序：
+      1. 白名單命中 → True
+      2. 代號末位 = 'B' (債券型) 或 'K' (槓桿) → False（純被動）
+      3. 代號末位為字母（A/D/T 等非 B/K）→ True（多為主動）
+      4. 純數字代號 → False（多為被動追蹤指數，如 0050/00878/00940）
+    """
+    if not ticker:
+        return False
+    _code = str(ticker).replace('.TW', '').replace('.TWO', '').replace('.tw', '').upper().strip()
+    if _code in _ACTIVE_TW_ETF_WHITELIST:
+        return True
+    if not _code:
+        return False
+    _last = _code[-1]
+    if _last in ('B', 'K'):  # 債券型 / 槓桿型 = 被動追蹤
+        return False
+    if _last.isalpha():       # 其他字母結尾 (A/D/T) 多為主動式
+        return True
+    return False              # 純數字 = 被動追蹤指數
+
+
+@st.cache_data(ttl=604800, show_spinner=False)
+def fetch_etf_manager(ticker: str):
+    """從 MoneyDJ ETF Basic0001 抓「現任經理人 + 任期起始日」。
+
+    URL: https://www.moneydj.com/ETF/X/Basic/Basic0001.xdjhtm?etfid=XXXX.TW
+
+    Returns
+    -------
+    dict | None
+        成功：{'name': '張三', 'since': '2024-04-15', 'tenure_days': 400}
+        失敗：None；只抓到名字無日期：{'name', 'since': None, 'tenure_days': None}
+
+    Cache TTL 7 日（經理人異動頻率低）。
+    """
+    import re as _re_mg
+    from datetime import date as _date_mg
+    _t = (ticker or '').replace('.tw', '.TW').strip()
+    if not _t:
+        return None
+    if '.' not in _t:
+        _t = f'{_t}.TW'
+    _url = f'https://www.moneydj.com/ETF/X/Basic/Basic0001.xdjhtm?etfid={_t}'
+    _hdrs = {
+        'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                       '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-TW,zh;q=0.9',
+        'Referer': 'https://www.moneydj.com/',
+    }
+    try:
+        try:
+            from curl_cffi import requests as _cffi_mg
+            _r = _cffi_mg.get(_url, impersonate='chrome124', timeout=12)
+        except Exception:
+            import requests as _rq_mg
+            _r = _rq_mg.get(_url, headers=_hdrs, timeout=12, verify=False)
+        if _r.status_code != 200:
+            print(f'[MDJ/manager] {_t}: HTTP {_r.status_code}')
+            return None
+        _txt = _r.text
+        _name_m = _re_mg.search(r'經理人[^<>\d]{0,30}?>?\s*([一-鿿]{2,8})\s*<', _txt)
+        _date_m = _re_mg.search(
+            r'(?:到職日|上任日|任期|管理基金日)[^\d]{0,30}?(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})',
+            _txt,
+        )
+        if not _name_m:
+            print(f'[MDJ/manager] ⚠️ {_t} 找不到經理人欄位')
+            return None
+        _name = _name_m.group(1).strip()
+        _since, _days = None, None
+        if _date_m:
+            _y, _mo, _d = (int(_date_m.group(i)) for i in (1, 2, 3))
+            try:
+                _dt = _date_mg(_y, _mo, _d)
+                _since = _dt.strftime('%Y-%m-%d')
+                _days = (_date_mg.today() - _dt).days
+            except ValueError:
+                pass
+        print(f'[MDJ/manager] ✅ {_t} = {_name} (since={_since}, days={_days})')
+        return {'name': _name, 'since': _since, 'tenure_days': _days}
+    except Exception as _e:
+        print(f'[MDJ/manager] ❌ {_t}: {type(_e).__name__}: {_e}')
+        return None
+
+
 def get_etf_expense_ratio_safe(ticker: str):
     """安全讀取 ETF 費用率：SITCA → MoneyDJ → yfinance 三段備援；缺失回 None 不崩潰"""
     # 1. 台股 ETF（純數字代號）優先走 SITCA（投信投顧公會官方），yfinance 對 .TW 票常 stale

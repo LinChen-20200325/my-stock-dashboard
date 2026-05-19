@@ -563,3 +563,162 @@ def build_holdings_overlap_matrix(holdings_dict, method='weight'):
             _mat[_i, _j] = _v
             _mat[_j, _i] = _v
     return _pd.DataFrame(_mat, index=_tickers, columns=_tickers)
+
+
+# ══════════════════════════════════════════════════════════════
+# 主動 ETF 弱勢度檢測（PR — claude/etf-weakness-manager）
+# Gemini 邏輯：大跌時跌得比大盤深 + 反彈時漲得比大盤慢 + 連兩季輸盤 = 該換
+# ══════════════════════════════════════════════════════════════
+def calc_weakness_metrics(etf_returns, bench_returns):
+    """主動 ETF 弱勢度核心指標（純函式，無 I/O）。
+
+    輸入兩條日報酬序列（pct_change 已算好），對齊後計算：
+      - 大跌弱勢率 down_ratio: 大盤跌日中 ETF 跌更深的比例 (0-100%)
+      - 反彈弱勢率 up_ratio:   大盤漲日中 ETF 漲更慢的比例 (0-100%)
+      - 季報酬輸盤連續數 quarter_lose_streak: 用 quarter 重採樣
+        最近 N 季 ETF 季報酬 < bench 季報酬的「連續」最近季數
+      - Tracking error te_pct: 日報酬差的年化標準差 (%)
+
+    Returns
+    -------
+    dict 7 個 key；資料 < 30 天 → {'_err': 'insufficient_data', 'sample': N}
+    """
+    import pandas as _pd_w
+    import numpy as _np_w
+    if etf_returns is None or bench_returns is None:
+        return {'_err': 'none_input'}
+    _df = _pd_w.concat([etf_returns, bench_returns], axis=1, keys=['etf', 'bench']).dropna()
+    if len(_df) < 30:
+        return {'_err': 'insufficient_data', 'sample': int(len(_df))}
+
+    _down = _df[_df['bench'] < 0]
+    _up = _df[_df['bench'] > 0]
+    _down_n = len(_down)
+    _up_n = len(_up)
+    _down_lose = int((_down['etf'] < _down['bench']).sum()) if _down_n > 0 else 0
+    _up_lose = int((_up['etf'] < _up['bench']).sum()) if _up_n > 0 else 0
+    _down_ratio = round(_down_lose / _down_n * 100, 1) if _down_n > 0 else 0.0
+    _up_ratio = round(_up_lose / _up_n * 100, 1) if _up_n > 0 else 0.0
+
+    # 季報酬：cumprod 算 quarterly compound return
+    _etf_q = (1 + _df['etf']).resample('QE').prod() - 1
+    _bench_q = (1 + _df['bench']).resample('QE').prod() - 1
+    _q_cmp = _pd_w.concat([_etf_q, _bench_q], axis=1, keys=['etf', 'bench']).dropna()
+    _streak = 0
+    for _i in range(len(_q_cmp) - 1, -1, -1):
+        if _q_cmp['etf'].iloc[_i] < _q_cmp['bench'].iloc[_i]:
+            _streak += 1
+        else:
+            break
+
+    _diff = _df['etf'] - _df['bench']
+    _te = float(_diff.std() * _np_w.sqrt(252) * 100) if _diff.std() > 0 else 0.0
+
+    return {
+        'down_days': _down_n,
+        'down_loss_days': _down_lose,
+        'down_ratio': _down_ratio,
+        'up_days': _up_n,
+        'up_miss_days': _up_lose,
+        'up_ratio': _up_ratio,
+        'quarter_lose_streak': _streak,
+        'te_pct': round(_te, 2),
+        'sample': len(_df),
+    }
+
+
+def _auto_bench_for_etf(ticker: str) -> str:
+    """根據 ETF ticker suffix 自動選 benchmark。
+
+    .TW / .TWO / 純數字 → ^TWII（台股加權）；其他 → ^GSPC（S&P 500）
+    """
+    _t = (ticker or '').upper().strip()
+    if _t.endswith('.TW') or _t.endswith('.TWO') or _t.replace('.', '').isalnum() and any(c.isdigit() for c in _t[:4]):
+        _code = _t.replace('.TW', '').replace('.TWO', '')
+        if _code and _code[0].isdigit():
+            return '^TWII'
+    return '^GSPC'
+
+
+@st.cache_data(ttl=900, max_entries=50, show_spinner=False)
+def compute_etf_weakness_row(ticker: str, name: str = '',
+                              bench_ticker: str | None = None,
+                              period: str = '1y') -> dict:
+    """高階組裝：抓 ETF / benchmark 價格 → 算 returns → 呼叫 calc_weakness_metrics
+    + 抓經理人。回傳給 UI 使用的整列 dict。
+    """
+    from etf_fetch import is_active_etf, fetch_etf_manager
+    _bench = bench_ticker or _auto_bench_for_etf(ticker)
+    _is_act = is_active_etf(ticker)
+
+    _row = {
+        '代號': ticker, '名稱': name or ticker,
+        '主被動': '主動式' if _is_act else '被動式',
+        'benchmark': _bench,
+        '經理人': '—', '任期': '—',
+        '大跌弱勢率%': None, '反彈弱勢率%': None,
+        '連敗季數': None, 'TE%': None, '樣本日': 0,
+        '燈號': '⚪ 未檢測', '動作建議': '—',
+    }
+    if not _is_act:
+        _row['燈號'] = '⚪ 被動追蹤型，免測弱勢'
+        _row['動作建議'] = '長期持有；觀察 tracking error'
+
+    try:
+        _etf_df = fetch_etf_price(ticker, period=period)
+        _bench_df = fetch_etf_price(_bench, period=period)
+        if _etf_df.empty or _bench_df.empty:
+            _row['燈號'] = '⚪ 價格資料不足'
+            return _row
+        _er = _etf_df['Close'].pct_change()
+        _br = _bench_df['Close'].pct_change()
+        _m = calc_weakness_metrics(_er, _br)
+        if '_err' in _m:
+            _row['燈號'] = f'⚪ {_m.get("_err", "calc_err")} (n={_m.get("sample", 0)})'
+            return _row
+        _row['大跌弱勢率%'] = _m['down_ratio']
+        _row['反彈弱勢率%'] = _m['up_ratio']
+        _row['連敗季數'] = _m['quarter_lose_streak']
+        _row['TE%'] = _m['te_pct']
+        _row['樣本日'] = _m['sample']
+    except Exception as _e:
+        print(f'[weakness/{ticker}] {type(_e).__name__}: {_e}')
+        _row['燈號'] = f'⚪ 抓取失敗：{type(_e).__name__}'
+        return _row
+
+    _tenure_days = None
+    if _is_act:
+        _mg = fetch_etf_manager(ticker)
+        if _mg:
+            _row['經理人'] = _mg.get('name', '—')
+            _tenure_days = _mg.get('tenure_days')
+            if _tenure_days is not None:
+                _row['任期'] = (f'{_tenure_days // 30} 個月' if _tenure_days < 365
+                              else f'{_tenure_days / 365:.1f} 年')
+            elif _mg.get('since'):
+                _row['任期'] = f'自 {_mg["since"]}'
+
+    if _is_act:
+        _down = _row['大跌弱勢率%'] or 0
+        _up = _row['反彈弱勢率%'] or 0
+        _streak = _row['連敗季數'] or 0
+        _new_manager = isinstance(_tenure_days, int) and _tenure_days < 180
+        if _streak >= 2:
+            _row['燈號'] = f'🚨 連續{_streak}季輸盤'
+            _row['動作建議'] = ('⏳ 新經理人 <6 月，再給時間'
+                              if _new_manager
+                              else '考慮換到大盤被動式 ETF（如 0050）')
+        elif _down > 60 and _up > 60:
+            _row['燈號'] = '🔴 雙向弱勢'
+            _row['動作建議'] = '近期表現雙向落後大盤；觀察 1-2 季'
+        elif _down > 60:
+            _row['燈號'] = '🟡 大跌弱勢'
+            _row['動作建議'] = '下跌防禦力不足，注意'
+        elif _up > 60:
+            _row['燈號'] = '🟡 反彈無力'
+            _row['動作建議'] = '反彈追不上大盤，績效落後'
+        else:
+            _row['燈號'] = '🟢 體質正常'
+            _row['動作建議'] = '續抱觀察'
+
+    return _row

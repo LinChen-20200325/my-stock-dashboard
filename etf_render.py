@@ -174,6 +174,44 @@ def _plot_holdings_overlap(mat: pd.DataFrame, title: str = '') -> None:
     st.plotly_chart(fig, width='stretch')
 
 
+def _render_weakness_table(rows) -> None:
+    """主動 ETF 弱勢度檢測表格（Gemini「淘汰不適任經理人」邏輯）
+
+    rows: List[dict] from etf_calc.compute_etf_weakness_row()
+    顯示欄位：代號 / 名稱 / 主被動 / 經理人 / 任期 / 大跌弱勢率% / 反彈弱勢率% /
+              連敗季數 / TE% / 燈號 / 動作建議
+    """
+    if not rows:
+        st.info('無資料可顯示')
+        return
+    df = pd.DataFrame(rows)
+    _display_cols = ['代號', '名稱', '主被動', '經理人', '任期',
+                     '大跌弱勢率%', '反彈弱勢率%', '連敗季數', 'TE%',
+                     '燈號', '動作建議']
+    _cols = [c for c in _display_cols if c in df.columns]
+    st.dataframe(
+        df[_cols],
+        width='stretch', hide_index=True,
+        column_config={
+            '大跌弱勢率%': st.column_config.ProgressColumn(
+                '大跌弱勢率%', help='大盤跌日中該 ETF 跌更深的比例',
+                format='%.1f%%', min_value=0, max_value=100,
+            ),
+            '反彈弱勢率%': st.column_config.ProgressColumn(
+                '反彈弱勢率%', help='大盤漲日中該 ETF 漲更慢的比例',
+                format='%.1f%%', min_value=0, max_value=100,
+            ),
+            '連敗季數': st.column_config.NumberColumn(
+                '連敗季數', help='最近連續輸盤季數（≥2 觸發換股警示）',
+            ),
+            'TE%': st.column_config.NumberColumn(
+                'TE%', help='Tracking error 年化%（主動式越高代表偏離指數越多）',
+                format='%.2f%%',
+            ),
+        },
+    )
+
+
 def _render_bias(df: pd.DataFrame, ticker: str) -> None:
     """BIAS 乖離率：(Close - MAn) / MAn × 100%，顯示 MA20/MA60/MA120"""
     if df is None or len(df) < 20:
