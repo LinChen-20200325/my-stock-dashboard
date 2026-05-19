@@ -89,14 +89,41 @@ def _get_active_sheet_id() -> str:
         return ''
 
 
+def _has_oauth_tokens() -> bool:
+    """是否已透過 OAuth 登入（不要求 Sheet ID 已設定）。
+
+    `_oauth_active()` 額外要求 sheet_id，會擋掉「列檔挑 Sheet」的場景；
+    建構 client 只需要看「有沒有登入 + OAuth Client 有設」。
+    """
+    if st is None:
+        return False
+    try:
+        from oauth_state import _oauth_configured
+    except Exception:
+        return False
+    if not _oauth_configured:
+        return False
+    if not st.session_state.get('gsheet_tokens'):
+        return False
+    return True
+
+
 def _build_client():
-    """依當前模式建一個 gspread client。OAuth 優先；fallback SA。"""
-    if _oauth_active():
+    """依當前模式建一個 gspread client。OAuth 優先；fallback SA。
+
+    OAuth 判斷只看「有 token + 有 OAuth Client」，不綁 sheet_id —
+    讓「列檔挑 Sheet」流程能在 sheet_id 還沒設定前先建 client。
+    """
+    if _has_oauth_tokens():
         from oauth_state import _get_oauth_client
         cli = _get_oauth_client()
         if cli is not None:
             return cli
-    # Fallback: Service Account
+    # Fallback: Service Account（OAuth 沒登入或建 client 失敗才走這條）
+    if not _sa_configured():
+        raise RuntimeError(
+            '尚未登入 Google 也未設定 Service Account — 請先「🔐 用 Google 登入」'
+            '或請管理員設定 `[gcp_service_account]` secret')
     import gspread
     from google.oauth2.service_account import Credentials
     sa_info = dict(st.secrets['gcp_service_account'])
@@ -221,8 +248,8 @@ def list_user_sheets() -> list[dict]:
     需要 OAuth scope `drive.metadata.readonly`（infra/oauth.py 已內建）。
     回傳 [{'id': ..., 'name': ...}, ...] 依名稱排序；非 OAuth 模式回空 list。
     """
-    if not _oauth_active() and not (st and st.session_state.get('gsheet_tokens')):
-        # SA 模式無法列檔；OAuth 但未登入也回空
+    if not _has_oauth_tokens():
+        # 未登入 OAuth → 無法列檔（SA 沒 drive.metadata.readonly scope）
         return []
     client = _build_client()
     try:
