@@ -94,14 +94,17 @@ def _has_oauth_tokens() -> bool:
 
     `_oauth_active()` 額外要求 sheet_id，會擋掉「列檔挑 Sheet」的場景；
     建構 client 只需要看「有沒有登入 + OAuth Client 有設」。
+
+    用 `is_oauth_configured()` 動態解析（取代 stale module-level `_oauth_configured`）—
+    in-app wizard 套用 OAuth config 後不必重啟 streamlit 也能立刻生效。
     """
     if st is None:
         return False
     try:
-        from oauth_state import _oauth_configured
+        from oauth_state import is_oauth_configured
     except Exception:
         return False
-    if not _oauth_configured:
+    if not is_oauth_configured():
         return False
     if not st.session_state.get('gsheet_tokens'):
         return False
