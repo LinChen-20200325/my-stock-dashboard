@@ -848,13 +848,12 @@ def _render_oauth_panel(_gsp) -> bool:
             try:
                 _files_ls = _gsp.list_user_sheets()
                 st.session_state['_etf_p_my_sheets'] = _files_ls
-                if not _files_ls:
-                    st.info('ℹ️ Drive 內沒有 Google Sheets，或目前 token 只能看 app 建立的檔。')
+                st.session_state['_etf_p_list_tried'] = True
             except Exception as _lse:
                 _err = str(_lse)
                 if 'insufficient' in _err.lower() or '403' in _err:
                     st.error('❌ 列檔失敗：OAuth token 缺少 `drive.metadata.readonly` 權限。\n\n'
-                             '**解法**：先「🚪 登出」→ 重新「🔐 用 Google 登入」（這次同意畫面會新增 Drive 中繼權限）→ 再試。')
+                             '**解法**：左 sidebar 先「🚪 登出」→ 重新「🔐 用 Google 登入」（這次同意畫面會多一條 Drive 中繼權限）→ 再回來點列檔。')
                 else:
                     st.error(f'❌ 列檔失敗：{_lse}')
 
@@ -872,19 +871,71 @@ def _render_oauth_panel(_gsp) -> bool:
                           type='primary', use_container_width=True):
                 _picked = _my_sheets[_sel_idx]
                 st.session_state['portfolio_sheet_id'] = _picked['id']
-                # 清掉舊的 text_input 殘值
                 st.session_state.pop('etf_p_sheet_id_input', None)
                 st.success(f"✅ 已選用 `{_picked['name']}`")
                 st.rerun()
+        elif st.session_state.get('_etf_p_list_tried'):
+            st.warning(
+                '⚠️ Drive 列檔回空 — 通常代表 OAuth token 是舊版發的（只授了 `drive.file` scope，只能看本 app 建立的檔）。\n\n'
+                '**兩個解法擇一**：\n'
+                '1. 左 sidebar「🚪 登出」→ 重新「🔐 用 Google 登入」拿完整中繼權限\n'
+                '2. 直接用下方「🆕 建立新 Sheet」一鍵建一本（用 `drive.file` 就可以，免重登）')
+
+        # ── 🆕 建立新 Sheet（不需 drive.metadata.readonly，避開卡關）─────
+        st.caption('🆕 **或者** — 一鍵建立新 Sheet（app 直接建檔擁有，免重新登入拿 Drive 中繼權限）：')
+        _new_c1, _new_c2 = st.columns([3, 2])
+        _new_title = _new_c1.text_input(
+            '新 Sheet 名稱', value='台股 Dashboard - 投資組合',
+            key='etf_p_new_sheet_title', label_visibility='collapsed',
+            placeholder='台股 Dashboard - 投資組合')
+        if _new_c2.button('🆕 建立新 Sheet', key='etf_p_create_sheet',
+                           use_container_width=True):
+            try:
+                _new_id, _new_url = _gsp.create_new_sheet(_new_title)
+            except Exception as _ce:
+                st.error(f'❌ 建立失敗：{_ce}')
+            else:
+                st.session_state['portfolio_sheet_id'] = _new_id
+                st.session_state.pop('etf_p_sheet_id_input', None)
+                st.session_state.pop('_etf_p_my_sheets', None)
+                st.success(f'✅ 已建立並選用「{_new_title}」 — [打開 Sheet]({_new_url})')
+                st.rerun()
 
         if not _sid:
-            st.info('💡 還沒選定 Sheet — 上方貼 URL/ID 或點「📂 從 Drive 列出 Sheets」挑一個（會自動建立 `portfolios` 分頁）')
+            st.info('💡 還沒選定 Sheet — 上方貼 URL/ID、從 Drive 列出挑一個、或按「🆕 建立新 Sheet」三選一')
             return False
 
     # 兩條路徑都通：給 caller 繼續渲染存取 UI
     if not _gsp.is_configured():
         st.warning('⚠️ 雲端儲存尚未就緒（請檢查上方設定）')
         return False
+
+    # ── 多帳本管理：顯示目前帳本 + 改名 ───────────────────────
+    if _oauth_configured and _logged_in:
+        _cur_title = ''
+        try:
+            _cur_title = _gsp.get_sheet_title()
+        except Exception:
+            _cur_title = ''
+        _sid_now = str(st.session_state.get('portfolio_sheet_id', '') or '').strip()
+        if _cur_title:
+            st.caption(f'📂 **目前工作中**：「{_cur_title}」　·　ID `{_sid_now[:14]}…`')
+        with st.expander('📝 改名目前 Sheet', expanded=False):
+            _rn_c1, _rn_c2 = st.columns([3, 1])
+            _rn_new = _rn_c1.text_input(
+                '新名稱', value=_cur_title,
+                key='etf_p_rename_input', label_visibility='collapsed',
+                placeholder='輸入新名稱')
+            if _rn_c2.button('✏️ 改名', key='etf_p_rename_btn',
+                              use_container_width=True,
+                              disabled=(not _rn_new.strip() or _rn_new.strip() == _cur_title)):
+                try:
+                    _gsp.rename_sheet(_rn_new)
+                except Exception as _re_err:
+                    st.error(f'❌ 改名失敗：{_re_err}')
+                else:
+                    st.success(f'✅ 已改名為「{_rn_new.strip()}」')
+                    st.rerun()
 
     st.markdown('---')
     return True

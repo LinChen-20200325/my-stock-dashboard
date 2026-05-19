@@ -266,6 +266,57 @@ def list_user_sheets() -> list[dict]:
     return out
 
 
+def create_new_sheet(title: str = '台股 Dashboard - 投資組合') -> tuple[str, str]:
+    """建立新 Google Sheet 並回傳 (sheet_id, sheet_url)。
+
+    OAuth 模式下 `drive.file` scope 已允許 app 建立並擁有此檔，
+    不需要 `drive.metadata.readonly` — 可避開「token 缺中繼權限」的卡關。
+    """
+    if not _has_oauth_tokens():
+        raise RuntimeError('建立新 Sheet 需先「🔐 用 Google 登入」')
+    title = (title or '').strip() or '台股 Dashboard - 投資組合'
+    client = _build_client()
+    try:
+        sh = client.create(title)
+    except Exception as e:
+        raise RuntimeError(f'建立 Sheet 失敗：[{type(e).__name__}] {e}') from e
+    sheet_id = getattr(sh, 'id', '') or ''
+    sheet_url = getattr(sh, 'url', '') or (
+        f'https://docs.google.com/spreadsheets/d/{sheet_id}/edit' if sheet_id else '')
+    if not sheet_id:
+        raise RuntimeError('建立 Sheet 後未取得 ID（gspread 回傳異常）')
+    return sheet_id, sheet_url
+
+
+def rename_sheet(new_title: str) -> bool:
+    """重新命名目前作用中的 Sheet。需要編輯權限。"""
+    new_title = (new_title or '').strip()
+    if not new_title:
+        raise ValueError('rename_sheet: 新名稱不可為空')
+    sheet_id = _get_active_sheet_id()
+    if not sheet_id:
+        raise RuntimeError('rename_sheet: 尚未選定 Sheet ID')
+    client = _build_client()
+    try:
+        sh = client.open_by_key(sheet_id)
+        sh.update_title(new_title)
+        return True
+    except Exception as e:
+        raise RuntimeError(f'重新命名失敗：[{type(e).__name__}] {e}') from e
+
+
+def get_sheet_title(sheet_id: str = '') -> str:
+    """取得指定 Sheet 的標題；sheet_id 為空時用目前作用中的。失敗回空字串。"""
+    sheet_id = sheet_id or _get_active_sheet_id()
+    if not sheet_id:
+        return ''
+    try:
+        sh = _build_client().open_by_key(sheet_id)
+        return getattr(sh, 'title', '') or ''
+    except Exception:
+        return ''
+
+
 def delete_portfolio(name: str) -> int:
     """刪除指定名稱的組合（所有持股列），回傳刪除的列數。"""
     name = (name or '').strip()
