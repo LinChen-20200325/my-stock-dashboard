@@ -1,9 +1,17 @@
-"""Google Sheet 持股組合雲端儲存 (PR #5)
+"""Google Sheet 持股組合雲端儲存 (PR #5 + OAuth 擴充)
 
 Schema (單一 worksheet `portfolios`)：
     name | ticker | lots | avg_price | updated_at
 
 多組命名 = 多列共用同一 worksheet；同一個 name 多列 = 該組合的所有持股。
+
+雙模式認證
+==========
+- OAuth（推薦）：使用者在 sidebar 用 Google 登入，自帶 Sheet
+  - secrets：`[google_oauth]` 或 in-app wizard 設定（client_id/secret/redirect_uri）
+  - 個人 Sheet ID：UI 輸入 → session_state['portfolio_sheet_id']
+- Service Account（向後相容）：管理員部署
+  - secrets：`portfolio_sheet_id` + `[gcp_service_account]`
 
 依賴
 ====
@@ -18,7 +26,7 @@ Schema (單一 worksheet `portfolios`)：
 ====
 - 純函式 API：is_configured / list_portfolios / load_portfolio / save_portfolio / delete_portfolio
 - 例外不吞，往上拋給 caller（UI 層用 try/except 顯示 st.error）
-- 客戶端與 worksheet handle 用 st.cache_resource 共享，避免重複 OAuth
+- OAuth client 由 oauth_state._get_oauth_client() 提供
 """
 from __future__ import annotations
 
@@ -34,8 +42,25 @@ _WORKSHEET_NAME = 'portfolios'
 _HEADERS = ['name', 'ticker', 'lots', 'avg_price', 'updated_at']
 
 
-def is_configured() -> bool:
-    """檢查 st.secrets 是否備齊 `portfolio_sheet_id` + `gcp_service_account`。"""
+def _oauth_active() -> bool:
+    """OAuth 模式：已設 OAuth Client + 已登入 + 有 sheet id。"""
+    if st is None:
+        return False
+    try:
+        from oauth_state import _oauth_configured
+    except Exception:
+        return False
+    if not _oauth_configured:
+        return False
+    if not st.session_state.get('gsheet_tokens'):
+        return False
+    if not _get_active_sheet_id():
+        return False
+    return True
+
+
+def _sa_configured() -> bool:
+    """Service Account 模式：兩個 secrets 都有。"""
     if st is None:
         return False
     try:
@@ -46,20 +71,51 @@ def is_configured() -> bool:
         return False
 
 
-def _get_worksheet():
-    """取得 (或建立) `portfolios` worksheet，並確保 header 列存在。"""
+def is_configured() -> bool:
+    """OAuth 已登入＋有 Sheet ID，或 SA 已備齊；任一條件即可。"""
+    return _oauth_active() or _sa_configured()
+
+
+def _get_active_sheet_id() -> str:
+    """OAuth 模式下取使用者輸入的 sheet id；SA 模式回 secrets 的值。"""
+    if st is None:
+        return ''
+    sid = str(st.session_state.get('portfolio_sheet_id', '') or '').strip()
+    if sid:
+        return sid
+    try:
+        return str(st.secrets.get('portfolio_sheet_id', '') or '').strip()
+    except (KeyError, FileNotFoundError, AttributeError):
+        return ''
+
+
+def _build_client():
+    """依當前模式建一個 gspread client。OAuth 優先；fallback SA。"""
+    if _oauth_active():
+        from oauth_state import _get_oauth_client
+        cli = _get_oauth_client()
+        if cli is not None:
+            return cli
+    # Fallback: Service Account
     import gspread
     from google.oauth2.service_account import Credentials
-
-    sheet_id = st.secrets['portfolio_sheet_id']
     sa_info = dict(st.secrets['gcp_service_account'])
-
     scopes = [
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive',
     ]
     creds = Credentials.from_service_account_info(sa_info, scopes=scopes)
-    client = gspread.authorize(creds)
+    return gspread.authorize(creds)
+
+
+def _get_worksheet():
+    """取得 (或建立) `portfolios` worksheet，並確保 header 列存在。"""
+    import gspread
+
+    sheet_id = _get_active_sheet_id()
+    if not sheet_id:
+        raise RuntimeError('尚未設定 Sheet ID（OAuth 模式請在雲端儲存區塊輸入）')
+    client = _build_client()
     sh = client.open_by_key(sheet_id)
 
     try:
@@ -76,14 +132,8 @@ def _get_worksheet():
 
 
 def _ws():
-    """取得 worksheet handle。Streamlit 環境用 cache_resource 共享。"""
-    if st is None:
-        return _get_worksheet()
-    cached = getattr(_ws, '_cached', None)
-    if cached is None:
-        cached = st.cache_resource(_get_worksheet)
-        _ws._cached = cached
-    return cached()
+    """取得 worksheet handle。每次重新建立（OAuth token 可能 refresh）。"""
+    return _get_worksheet()
 
 
 def _all_records() -> list[dict[str, Any]]:

@@ -726,24 +726,132 @@ def render_etf_portfolio(gemini_fn=None):
     })
 
 
+def _render_oauth_panel(_gsp) -> bool:
+    """OAuth 登入 + Sheet ID 設定面板。
+
+    回傳 True 代表雲端儲存可用（OAuth 已登入＋有 Sheet ID，或 SA 已備齊）。
+    False 代表需要先完成設定，後續 UI 應跳過。
+    """
+    import re as _re
+
+    try:
+        from oauth_state import (
+            _oauth_configured, _oauth_cfg, _gsa_secret, _sheet_id_secret,
+        )
+        from infra.oauth import build_authorize_url
+    except Exception as _ie:
+        st.error(f'❌ OAuth 模組載入失敗：{_ie}')
+        # 降級：只看 SA
+        return _gsp._sa_configured()
+
+    _logged_in = bool(st.session_state.get('gsheet_tokens'))
+
+    # ── 狀態列 ──────────────────────────────────────
+    if _oauth_configured:
+        if _logged_in:
+            _c_st1, _c_st2 = st.columns([3, 1])
+            _c_st1.success('🟢 已用 Google 登入（OAuth）')
+            if _c_st2.button('🚪 登出', key='etf_p_oauth_logout',
+                              use_container_width=True):
+                st.session_state.pop('gsheet_tokens', None)
+                st.rerun()
+        else:
+            _login_url = build_authorize_url(
+                _oauth_cfg['client_id'], _oauth_cfg['redirect_uri'])
+            st.info('ℹ️ 尚未登入 Google — 點下方按鈕完成登入即可使用個人 Sheet。')
+            st.link_button('🔐 用 Google 登入', _login_url,
+                            use_container_width=True)
+    elif _gsa_secret and _sheet_id_secret:
+        st.info('ℹ️ 偵測到 Service Account 設定，走管理員部署模式（向後相容）')
+    else:
+        # In-app OAuth Client 設定 wizard（不必碰 secrets.toml）
+        st.warning('尚未設定 OAuth Client。請依下方步驟在 GCP console 建一個，'
+                    '再回到這裡貼三個值即可登入。')
+        with st.expander('🧙 OAuth Client 設定引導（5 分鐘完成）', expanded=False):
+            st.markdown(
+                """
+                **一次性 GCP 設定**（之後你就只要按「🔐 用 Google 登入」即可）：
+
+                1. **啟用 API**：[GCP Console → APIs Library](https://console.cloud.google.com/apis/library) →
+                   啟用 `Google Sheets API` + `Google Drive API`
+                2. **OAuth consent screen**：
+                   [連結](https://console.cloud.google.com/apis/credentials/consent) → User Type: **External**
+                   → 填 App name / email → Scopes 加 `spreadsheets` + `drive.file` + `openid` + `userinfo.email`
+                   → Test users 加自己的 Gmail
+                3. **建 OAuth Client ID**：
+                   [連結](https://console.cloud.google.com/apis/credentials) → Create Credentials →
+                   OAuth client ID → Web application
+                   → **Authorized redirect URIs** 必須加上**這個 app 的 URL**（含尾巴 `/`）
+                4. 把下面三個值貼進來：
+                """
+            )
+            _wz_cfg = st.session_state.get('custom_oauth_cfg', {})
+            _wz_cid  = st.text_input('client_id',
+                value=_wz_cfg.get('client_id', ''),
+                key='wz_oauth_cid',
+                placeholder='xxx.apps.googleusercontent.com')
+            _wz_csec = st.text_input('client_secret',
+                value=_wz_cfg.get('client_secret', ''),
+                key='wz_oauth_csec', type='password')
+            _wz_ru   = st.text_input('redirect_uri',
+                value=_wz_cfg.get('redirect_uri', ''),
+                key='wz_oauth_ru',
+                placeholder='https://<your-app>.streamlit.app/')
+            if st.button('💾 套用 OAuth Client 設定',
+                          key='wz_oauth_apply', use_container_width=True):
+                if _wz_cid and _wz_csec and _wz_ru:
+                    st.session_state['custom_oauth_cfg'] = {
+                        'client_id':     _wz_cid.strip(),
+                        'client_secret': _wz_csec.strip(),
+                        'redirect_uri':  _wz_ru.strip(),
+                    }
+                    st.success('✅ 已套用，下方會出現「🔐 用 Google 登入」按鈕')
+                    st.rerun()
+                else:
+                    st.error('三個欄位都要填')
+        return False
+
+    # ── OAuth 已登入：個人 Sheet ID 設定 ────────────────────────
+    if _oauth_configured and _logged_in:
+        _sid_cur = str(st.session_state.get('portfolio_sheet_id', '') or '').strip()
+        _sid_raw = st.text_input(
+            'Google Sheet ID 或完整 URL（系統會自動解析 ID）',
+            value=_sid_cur, key='etf_p_sheet_id_input',
+            placeholder='貼上 https://docs.google.com/spreadsheets/d/...',
+        )
+        _m = _re.search(r'/spreadsheets/d/([a-zA-Z0-9_-]+)', _sid_raw)
+        _sid = _m.group(1) if _m else _sid_raw.strip()
+        if _sid and _sid != _sid_cur:
+            st.session_state['portfolio_sheet_id'] = _sid
+            st.caption(f'✅ 已設定 Sheet ID：`{_sid}`')
+        if not _sid:
+            st.info('💡 還沒輸入 Sheet ID — 請在 Google Drive 建一份試算表（檔案完全空白即可），'
+                    '貼上完整 URL 或 ID，本工具會自動建立 `portfolios` 分頁。')
+            return False
+
+    # 兩條路徑都通：給 caller 繼續渲染存取 UI
+    if not _gsp.is_configured():
+        st.warning('⚠️ 雲端儲存尚未就緒（請檢查上方設定）')
+        return False
+
+    st.markdown('---')
+    return True
+
+
 def _render_cloud_storage(edited_df):
     """💾 Google Sheet 雲端儲存 UI（expander 折疊）。
 
     Args:
         edited_df: data_editor 回傳的當下表格 DataFrame（含使用者剛編輯後的內容）
 
-    - 未設定 secrets：顯示提示連到 SOP
+    - 未設定：顯示 OAuth 登入引導 / Sheet ID 設定
     - 已設定：提供「載入既有 / 儲存當前 / 刪除」三組操作
     """
     import gsheet_portfolio as _gsp
 
     with st.expander('💾 雲端儲存 (Google Sheet)', expanded=False):
-        if not _gsp.is_configured():
-            st.warning(
-                '⚠️ 尚未設定 Google Sheet 憑證。'
-                '需在 `.streamlit/secrets.toml` 加上 `portfolio_sheet_id` 與 `[gcp_service_account]`。'
-                '設定方式請見 README 或詢問管理員。'
-            )
+        # ── OAuth 設定 / Sheet ID 設定 ──────────────────────────────
+        if not _render_oauth_panel(_gsp):
             return
 
         # ── 載入既有組合 ──

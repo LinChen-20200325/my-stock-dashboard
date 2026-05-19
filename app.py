@@ -89,6 +89,13 @@ def _get_fm_token():
 st.set_page_config(page_title='台股AI戰情室 v3.0', layout='wide',
                    page_icon='📊', initial_sidebar_state='collapsed')
 
+# ── OAuth callback：URL 帶 ?code= 時自動換 token（必須早於其他 query_params 操作）
+try:
+    from oauth_state import handle_oauth_callback as _oauth_cb
+    _oauth_cb()
+except Exception as _oauth_err:
+    print(f'[oauth callback] {_oauth_err}')
+
 # ── App 初始化閘門（每個 Session 僅執行一次，防重複迴圈）────────────
 if '_app_boot_done' not in st.session_state:
     st.session_state['_app_boot_done'] = True
@@ -847,6 +854,36 @@ with st.sidebar:
     ai_run = False  # AI button moved to bottom panel
     st.markdown('---')
     st.success('🟢 系統正常運作中')
+
+    # ── Google 帳號（OAuth）— ETF 組合雲端存取用 ─────────────────
+    st.markdown('---')
+    st.markdown('### 🔐 Google 帳號')
+    try:
+        from oauth_state import (
+            _oauth_configured as _sb_oc,
+            _oauth_cfg as _sb_cfg,
+            _gsa_secret as _sb_gsa,
+            _sheet_id_secret as _sb_sid,
+        )
+        from infra.oauth import build_authorize_url as _sb_buildurl
+    except Exception:
+        _sb_oc, _sb_cfg, _sb_gsa, _sb_sid, _sb_buildurl = False, None, None, '', None
+    _sb_logged = bool(st.session_state.get('gsheet_tokens'))
+    if _sb_oc:
+        if _sb_logged:
+            st.success('🟢 已登入')
+            if st.button('🚪 登出', key='btn_oauth_logout_sb',
+                          use_container_width=True):
+                st.session_state.pop('gsheet_tokens', None)
+                st.rerun()
+        elif _sb_buildurl and _sb_cfg:
+            _sb_url = _sb_buildurl(_sb_cfg['client_id'], _sb_cfg['redirect_uri'])
+            st.link_button('🔐 用 Google 登入', _sb_url, use_container_width=True)
+            st.caption('登入後 ETF 組合 Tab 可雲端存取')
+    elif _sb_gsa and _sb_sid:
+        st.caption('ℹ️ 使用 Service Account（舊版部署）')
+    else:
+        st.caption('⚙️ OAuth 尚未設定 — 至「ETF 組合」Tab 展開「💾 雲端儲存」設定')
 
     st.markdown('---')
     st.markdown('### 🔌 連線狀態')
