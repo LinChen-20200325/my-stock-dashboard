@@ -504,7 +504,8 @@ app.py      ✓    ✓    ✓    ✓    ✓    ✓
 ETF 組合子頁（render_etf_portfolio）額外流程：
   使用者輸入多支 ETF + 持倉比例
        │
-       ├─ 相關係數矩陣計算 → 熱力圖
+       ├─ 相關係數矩陣計算 → 熱力圖（價格報酬 Pearson）
+       ├─ 持股 Overlap 矩陣（PR #2）→ 熱力圖（fetch_etf_holdings + Σmin / Jaccard）
        ├─ 組合績效回測（CAGR / Sharpe / MDD）
        ├─ _render_monte_carlo()：蒙地卡羅模擬（1000 次路徑）
        └─ _etf_ai_portfolio()：組合 AI 評斷
