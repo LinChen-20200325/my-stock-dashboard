@@ -54,43 +54,48 @@ def render_stock_grp():
 </div>""", unsafe_allow_html=True)
 
     # ══ ① 市場狀態快覽 ══════════════════════════════════════════
-    _t3_mkt = st.session_state.get('mkt_info', {})
+    # 改為總是渲染 3 張卡，無資料時顯示「未載入」中性 placeholder（不再強制要求先跑總經 Tab）
+    _t3_mkt = st.session_state.get('mkt_info', {}) or {}
     _t3_li  = st.session_state.get('li_latest')
-    _t3_tl  = st.session_state.get('warroom_summary', {})
-    if _t3_tl or _t3_mkt:
-        _t3c1, _t3c2, _t3c3 = st.columns(3)
-        with _t3c1:
-            _tl_label = _t3_tl.get('traffic_light', '未更新')
-            _tl_color = ('#3fb950' if '綠' in _tl_label else
-                         '#d29922' if '黃' in _tl_label else
-                         '#f85149' if '紅' in _tl_label else '#484f58')
-            st.markdown(
-                f'<div style="background:#0d1117;border:1px solid {_tl_color}33;border-radius:8px;'
-                f'padding:10px 14px;text-align:center;">'
-                f'<div style="font-size:11px;color:#8b949e;">🚦 大盤燈號</div>'
-                f'<div style="font-size:16px;font-weight:900;color:{_tl_color};">{_tl_label}</div>'
-                f'</div>', unsafe_allow_html=True)
-        with _t3c2:
-            _twii = _t3_mkt.get('台股加權指數', {})
-            _twii_pct = _twii.get('pct', 0) if _twii else 0
+    _t3_tl  = st.session_state.get('warroom_summary', {}) or {}
+
+    _t3c1, _t3c2, _t3c3 = st.columns(3)
+    with _t3c1:
+        _tl_label = _t3_tl.get('traffic_light') or '未載入'
+        _tl_color = ('#3fb950' if '綠' in _tl_label else
+                     '#d29922' if '黃' in _tl_label else
+                     '#f85149' if '紅' in _tl_label else '#484f58')
+        st.markdown(
+            f'<div style="background:#0d1117;border:1px solid {_tl_color}33;border-radius:8px;'
+            f'padding:10px 14px;text-align:center;">'
+            f'<div style="font-size:11px;color:#8b949e;">🚦 大盤燈號</div>'
+            f'<div style="font-size:16px;font-weight:900;color:{_tl_color};">{_tl_label}</div>'
+            f'</div>', unsafe_allow_html=True)
+    with _t3c2:
+        _twii = _t3_mkt.get('台股加權指數', {})
+        if _twii:
+            _twii_pct = _twii.get('pct', 0)
             _twii_c = '#da3633' if _twii_pct > 0 else '#2ea043'
-            st.markdown(
-                f'<div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;'
-                f'padding:10px 14px;text-align:center;">'
-                f'<div style="font-size:11px;color:#8b949e;">📈 台股大盤</div>'
-                f'<div style="font-size:16px;font-weight:900;color:{_twii_c};">{_twii_pct:+.2f}%</div>'
-                f'</div>', unsafe_allow_html=True)
-        with _t3c3:
-            _t3_hold = _t3_tl.get('hold_pct', '--')
-            st.markdown(
-                f'<div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;'
-                f'padding:10px 14px;text-align:center;">'
-                f'<div style="font-size:11px;color:#8b949e;">💼 建議持股</div>'
-                f'<div style="font-size:16px;font-weight:900;color:#58a6ff;">{_t3_hold}%</div>'
-                f'</div>', unsafe_allow_html=True)
-        st.markdown('')
-    else:
-        st.info('⏳ 請先到「🌍 總經」Tab 點擊「🚀 一鍵更新全部數據」取得最新大盤狀態')
+            _twii_val = f'{_twii_pct:+.2f}%'
+        else:
+            _twii_c, _twii_val = '#484f58', '未載入'
+        st.markdown(
+            f'<div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;'
+            f'padding:10px 14px;text-align:center;">'
+            f'<div style="font-size:11px;color:#8b949e;">📈 台股大盤</div>'
+            f'<div style="font-size:16px;font-weight:900;color:{_twii_c};">{_twii_val}</div>'
+            f'</div>', unsafe_allow_html=True)
+    with _t3c3:
+        _t3_hold = _t3_tl.get('hold_pct')
+        _hold_val = f'{_t3_hold}%' if _t3_hold not in (None, '', '--') else '未載入'
+        _hold_c = '#58a6ff' if _t3_hold not in (None, '', '--') else '#484f58'
+        st.markdown(
+            f'<div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;'
+            f'padding:10px 14px;text-align:center;">'
+            f'<div style="font-size:11px;color:#8b949e;">💼 建議持股</div>'
+            f'<div style="font-size:16px;font-weight:900;color:{_hold_c};">{_hold_val}</div>'
+            f'</div>', unsafe_allow_html=True)
+    st.markdown('')
 
     # ══ ② 輸入多檔代碼 ══════════════════════════════════════════
     with st.container(border=True):
