@@ -841,15 +841,43 @@ def _render_oauth_panel(_gsp) -> bool:
 
         # ── 從 Drive 列出既有 Sheets 挑一個（不必複製 ID）──────────
         st.caption('📂 **或者** — 從你 Google Drive 既有的 Sheets 挑一個（可選擇限定資料夾）：')
-        _folder_raw = st.text_input(
-            '📁 限定資料夾（可選）— 貼資料夾 URL 或 ID，留空則列全部',
-            value=str(st.session_state.get('_etf_p_drive_folder', '') or ''),
-            key='etf_p_drive_folder_input',
-            placeholder='https://drive.google.com/drive/folders/<FOLDER_ID>',
-            help='從 Google Drive 開資料夾 → 上方網址列複製整段 URL 貼上，系統會自動抽 ID')
-        _fm = _re.search(r'/folders/([a-zA-Z0-9_-]+)', _folder_raw)
-        _folder_id = _fm.group(1) if _fm else _folder_raw.strip()
+
+        # 資料夾下拉選單：先列出所有資料夾讓使用者挑（取代手貼 URL）
+        _folders_btn_c1, _folders_btn_c2 = st.columns([2, 3])
+        if _folders_btn_c1.button('🔄 載入資料夾清單',
+                                   key='etf_p_load_folders',
+                                   use_container_width=True,
+                                   help='點一次抓 Drive 內所有資料夾；之後下方下拉就能選'):
+            try:
+                _folders_ls = _gsp.list_user_folders()
+                st.session_state['_etf_p_my_folders'] = _folders_ls
+                if not _folders_ls:
+                    st.info('ℹ️ Drive 內沒有資料夾，或 token 缺 `drive.metadata.readonly` 權限')
+            except Exception as _fle:
+                _err = str(_fle)
+                if 'insufficient' in _err.lower() or '403' in _err:
+                    st.error('❌ 列資料夾失敗：OAuth token 缺中繼權限。左 sidebar「🚪 登出」→ 重新登入即可。')
+                else:
+                    st.error(f'❌ 列資料夾失敗：{_fle}')
+
+        _my_folders = st.session_state.get('_etf_p_my_folders') or []
+        _folder_options = [('', '🌐 整個帳號（不限資料夾）')] + [
+            (f['id'], f"📁 {f['name']}  (`{f['id'][:10]}…`)") for f in _my_folders]
+        _cur_folder_id = str(st.session_state.get('_etf_p_drive_folder', '') or '')
+        try:
+            _cur_idx = next(i for i, (fid, _) in enumerate(_folder_options) if fid == _cur_folder_id)
+        except StopIteration:
+            _cur_idx = 0
+        _sel_folder_idx = st.selectbox(
+            '📁 限定資料夾（可選）',
+            range(len(_folder_options)),
+            index=_cur_idx,
+            format_func=lambda i: _folder_options[i][1],
+            key='etf_p_drive_folder_sel',
+            help='留空 = 列整個帳號；或先點「🔄 載入資料夾清單」抓 Drive 資料夾後挑一個')
+        _folder_id = _folder_options[_sel_folder_idx][0]
         st.session_state['_etf_p_drive_folder'] = _folder_id
+
         _list_c1, _list_c2 = st.columns([2, 3])
         if _list_c1.button('📂 從 Drive 列出 Sheets',
                             key='etf_p_list_drive', use_container_width=True,
@@ -858,7 +886,8 @@ def _render_oauth_panel(_gsp) -> bool:
                 _files_ls = _gsp.list_user_sheets(folder_id=_folder_id)
                 st.session_state['_etf_p_my_sheets'] = _files_ls
                 st.session_state['_etf_p_list_tried'] = True
-                st.session_state['_etf_p_list_scope'] = f'資料夾 `{_folder_id[:14]}…`' if _folder_id else '整個帳號'
+                _scope_name = _folder_options[_sel_folder_idx][1].lstrip('📁🌐 ').split('  (')[0]
+                st.session_state['_etf_p_list_scope'] = _scope_name
             except Exception as _lse:
                 _err = str(_lse)
                 if 'insufficient' in _err.lower() or '403' in _err:

@@ -274,6 +274,45 @@ def list_user_sheets(folder_id: str = '') -> list[dict]:
     return out
 
 
+def list_user_folders() -> list[dict]:
+    """OAuth 模式列出使用者 Google Drive 內所有資料夾（含共享）。
+
+    透過 gspread client 的 http_client 直接打 Drive v3 API；
+    需要 OAuth scope `drive.metadata.readonly`。
+    回傳 [{'id': ..., 'name': ...}, ...] 依名稱排序；非 OAuth 模式回空 list。
+    """
+    if not _has_oauth_tokens():
+        return []
+    client = _build_client()
+    url = 'https://www.googleapis.com/drive/v3/files'
+    params = {
+        'q': 'mimeType="application/vnd.google-apps.folder" and trashed=false',
+        'pageSize': 1000,
+        'supportsAllDrives': True,
+        'includeItemsFromAllDrives': True,
+        'fields': 'nextPageToken,files(id,name)',
+    }
+    folders: list[dict] = []
+    page_token: str | None = None
+    try:
+        while True:
+            if page_token:
+                params['pageToken'] = page_token
+            resp = client.http_client.request('get', url, params=params)
+            data = resp.json()
+            for f in (data.get('files') or []):
+                _id, _nm = f.get('id'), f.get('name')
+                if _id and _nm:
+                    folders.append({'id': _id, 'name': _nm})
+            page_token = data.get('nextPageToken')
+            if not page_token:
+                break
+    except Exception as e:
+        raise RuntimeError(f'列出 Drive 資料夾失敗：[{type(e).__name__}] {e}') from e
+    folders.sort(key=lambda x: x['name'].lower())
+    return folders
+
+
 def create_new_sheet(title: str = '台股 Dashboard - 投資組合') -> tuple[str, str]:
     """建立新 Google Sheet 並回傳 (sheet_id, sheet_url)。
 
