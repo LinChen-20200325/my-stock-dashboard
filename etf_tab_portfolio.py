@@ -765,50 +765,51 @@ def _render_oauth_panel(_gsp) -> bool:
         st.info('ℹ️ 偵測到 Service Account 設定，走管理員部署模式（向後相容）')
     else:
         # In-app OAuth Client 設定 wizard（不必碰 secrets.toml）
+        # 註：本面板已位於外層「💾 雲端儲存」expander 內，這裡不能再 st.expander（Streamlit 禁巢狀）
         st.warning('尚未設定 OAuth Client。請依下方步驟在 GCP console 建一個，'
                     '再回到這裡貼三個值即可登入。')
-        with st.expander('🧙 OAuth Client 設定引導（5 分鐘完成）', expanded=False):
-            st.markdown(
-                """
-                **一次性 GCP 設定**（之後你就只要按「🔐 用 Google 登入」即可）：
+        st.markdown('**🧙 OAuth Client 設定引導（5 分鐘完成）**')
+        st.markdown(
+            """
+            **一次性 GCP 設定**（之後你就只要按「🔐 用 Google 登入」即可）：
 
-                1. **啟用 API**：[GCP Console → APIs Library](https://console.cloud.google.com/apis/library) →
-                   啟用 `Google Sheets API` + `Google Drive API`
-                2. **OAuth consent screen**：
-                   [連結](https://console.cloud.google.com/apis/credentials/consent) → User Type: **External**
-                   → 填 App name / email → Scopes 加 `spreadsheets` + `drive.file` + `openid` + `userinfo.email`
-                   → Test users 加自己的 Gmail
-                3. **建 OAuth Client ID**：
-                   [連結](https://console.cloud.google.com/apis/credentials) → Create Credentials →
-                   OAuth client ID → Web application
-                   → **Authorized redirect URIs** 必須加上**這個 app 的 URL**（含尾巴 `/`）
-                4. 把下面三個值貼進來：
-                """
-            )
-            _wz_cfg = st.session_state.get('custom_oauth_cfg', {})
-            _wz_cid  = st.text_input('client_id',
-                value=_wz_cfg.get('client_id', ''),
-                key='wz_oauth_cid',
-                placeholder='xxx.apps.googleusercontent.com')
-            _wz_csec = st.text_input('client_secret',
-                value=_wz_cfg.get('client_secret', ''),
-                key='wz_oauth_csec', type='password')
-            _wz_ru   = st.text_input('redirect_uri',
-                value=_wz_cfg.get('redirect_uri', ''),
-                key='wz_oauth_ru',
-                placeholder='https://<your-app>.streamlit.app/')
-            if st.button('💾 套用 OAuth Client 設定',
-                          key='wz_oauth_apply', use_container_width=True):
-                if _wz_cid and _wz_csec and _wz_ru:
-                    st.session_state['custom_oauth_cfg'] = {
-                        'client_id':     _wz_cid.strip(),
-                        'client_secret': _wz_csec.strip(),
-                        'redirect_uri':  _wz_ru.strip(),
-                    }
-                    st.success('✅ 已套用，下方會出現「🔐 用 Google 登入」按鈕')
-                    st.rerun()
-                else:
-                    st.error('三個欄位都要填')
+            1. **啟用 API**：[GCP Console → APIs Library](https://console.cloud.google.com/apis/library) →
+               啟用 `Google Sheets API` + `Google Drive API`
+            2. **OAuth consent screen**：
+               [連結](https://console.cloud.google.com/apis/credentials/consent) → User Type: **External**
+               → 填 App name / email → Scopes 加 `spreadsheets` + `drive.file` + `openid` + `userinfo.email`
+               → Test users 加自己的 Gmail
+            3. **建 OAuth Client ID**：
+               [連結](https://console.cloud.google.com/apis/credentials) → Create Credentials →
+               OAuth client ID → Web application
+               → **Authorized redirect URIs** 必須加上**這個 app 的 URL**（含尾巴 `/`）
+            4. 把下面三個值貼進來：
+            """
+        )
+        _wz_cfg = st.session_state.get('custom_oauth_cfg', {})
+        _wz_cid  = st.text_input('client_id',
+            value=_wz_cfg.get('client_id', ''),
+            key='wz_oauth_cid',
+            placeholder='xxx.apps.googleusercontent.com')
+        _wz_csec = st.text_input('client_secret',
+            value=_wz_cfg.get('client_secret', ''),
+            key='wz_oauth_csec', type='password')
+        _wz_ru   = st.text_input('redirect_uri',
+            value=_wz_cfg.get('redirect_uri', ''),
+            key='wz_oauth_ru',
+            placeholder='https://<your-app>.streamlit.app/')
+        if st.button('💾 套用 OAuth Client 設定',
+                      key='wz_oauth_apply', use_container_width=True):
+            if _wz_cid and _wz_csec and _wz_ru:
+                st.session_state['custom_oauth_cfg'] = {
+                    'client_id':     _wz_cid.strip(),
+                    'client_secret': _wz_csec.strip(),
+                    'redirect_uri':  _wz_ru.strip(),
+                }
+                st.success('✅ 已套用，下方會出現「🔐 用 Google 登入」按鈕')
+                st.rerun()
+            else:
+                st.error('三個欄位都要填')
         return False
 
     # ── OAuth 已登入：個人 Sheet ID 設定 ────────────────────────
