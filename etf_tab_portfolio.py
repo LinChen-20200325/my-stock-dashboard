@@ -736,7 +736,7 @@ def _render_oauth_panel(_gsp) -> bool:
 
     try:
         from oauth_state import (
-            _oauth_configured, _oauth_cfg, _gsa_secret, _sheet_id_secret,
+            get_oauth_cfg, _gsa_secret, _sheet_id_secret,
         )
         from infra.oauth import build_authorize_url
     except Exception as _ie:
@@ -744,6 +744,9 @@ def _render_oauth_panel(_gsp) -> bool:
         # 降級：只看 SA
         return _gsp._sa_configured()
 
+    # 每次呼叫動態解析（避免 module-level cache 讓 in-app wizard 套用後仍 stale）
+    _oauth_cfg = get_oauth_cfg()
+    _oauth_configured = _oauth_cfg is not None
     _logged_in = bool(st.session_state.get('gsheet_tokens'))
 
     # ── 狀態列 ──────────────────────────────────────

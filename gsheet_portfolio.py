@@ -47,10 +47,10 @@ def _oauth_active() -> bool:
     if st is None:
         return False
     try:
-        from oauth_state import _oauth_configured
+        from oauth_state import is_oauth_configured
     except Exception:
         return False
-    if not _oauth_configured:
+    if not is_oauth_configured():
         return False
     if not st.session_state.get('gsheet_tokens'):
         return False

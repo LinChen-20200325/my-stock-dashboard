@@ -860,12 +860,14 @@ with st.sidebar:
     st.markdown('### 🔐 Google 帳號')
     try:
         from oauth_state import (
-            _oauth_configured as _sb_oc,
-            _oauth_cfg as _sb_cfg,
+            get_oauth_cfg as _sb_get_cfg,
             _gsa_secret as _sb_gsa,
             _sheet_id_secret as _sb_sid,
         )
         from infra.oauth import build_authorize_url as _sb_buildurl
+        # 每次 rerun 動態解析，避免 module-level cache 過期
+        _sb_cfg = _sb_get_cfg()
+        _sb_oc = _sb_cfg is not None
     except Exception:
         _sb_oc, _sb_cfg, _sb_gsa, _sb_sid, _sb_buildurl = False, None, None, '', None
     _sb_logged = bool(st.session_state.get('gsheet_tokens'))

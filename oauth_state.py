@@ -6,8 +6,8 @@
 外部 API
 ========
 - _gsa_secret / _sheet_id_secret  (secrets 讀取)
-- _resolve_oauth_cfg()             (config 優先序：secrets > session_state)
-- _oauth_cfg / _oauth_configured   (module-level 計算)
+- _resolve_oauth_cfg()             (config 優先序：secrets > session_state；每次呼叫動態解析)
+- get_oauth_cfg() / is_oauth_configured()  (動態包裝；caller 必用這兩個，不要直接 import module-level)
 - _get_oauth_client()              (建 gspread client)
 - handle_oauth_callback()          (URL ?code= 換 token)
 
@@ -61,20 +61,31 @@ def _resolve_oauth_cfg() -> "dict | None":
     return None
 
 
-_oauth_cfg = _resolve_oauth_cfg()
-_oauth_configured = _oauth_cfg is not None
+def get_oauth_cfg() -> "dict | None":
+    """動態解析 OAuth config（每次呼叫都重算）。
+
+    取代舊的 module-level `_oauth_cfg`。Streamlit 每次 rerun 都會看到最新的
+    session_state['custom_oauth_cfg']，避免 in-app wizard 套用後 stale。
+    """
+    return _resolve_oauth_cfg()
+
+
+def is_oauth_configured() -> bool:
+    """OAuth Client 是否已備齊（secrets 或 session_state 二擇一即可）。"""
+    return _resolve_oauth_cfg() is not None
 
 
 def _get_oauth_client():
     """從 session_state 的 tokens 建一個 gspread client，順便 ensure 過期前 refresh。"""
+    cfg = _resolve_oauth_cfg()
     toks = st.session_state.get("gsheet_tokens")
-    if not toks or not _oauth_cfg:
+    if not toks or not cfg:
         return None
     toks = ensure_fresh_tokens(dict(toks),
-        _oauth_cfg["client_id"], _oauth_cfg["client_secret"])
+        cfg["client_id"], cfg["client_secret"])
     st.session_state["gsheet_tokens"] = toks
     creds = build_credentials_from_tokens(toks,
-        _oauth_cfg["client_id"], _oauth_cfg["client_secret"])
+        cfg["client_id"], cfg["client_secret"])
     import gspread
     return gspread.authorize(creds)
 
