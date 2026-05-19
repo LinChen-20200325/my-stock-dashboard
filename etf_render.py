@@ -191,7 +191,7 @@ def _render_weakness_table(rows) -> None:
     _cols = [c for c in _display_cols if c in df.columns]
     st.dataframe(
         df[_cols],
-        width='stretch', hide_index=True,
+        use_container_width=True, hide_index=True,
         column_config={
             '大跌弱勢率%': st.column_config.ProgressColumn(
                 '大跌弱勢率%', help='大盤跌日中該 ETF 跌更深的比例',
