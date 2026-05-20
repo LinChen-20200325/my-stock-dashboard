@@ -306,67 +306,13 @@ def _render_propose_subtab() -> None:
                      use_container_width=True, hide_index=True)
 
 
-def _render_evaluate_subtab() -> None:
-    """🔍 評估我的組合 sub-tab — 讀取上方「組合配置」已輸入的持股，用真實股數估算月現金流。"""
-    st.markdown('##### 🔍 評估你現有的 ETF 組合')
-    _rows = st.session_state.get('etf_portfolio_rows')
-    if not _rows:
-        st.info('💡 請先到上方「📋 輸入持股組合」區塊輸入持股並點「計算組合」，本區會自動讀取你的真實股數估算月配息現金流。')
-        return
-
-    # 從 portfolio 持股拿台股 ETF（.TW/.TWO）+ 真實股數
-    _tickers: list[str] = []
-    _shares_map: dict[str, int] = {}
-    _skipped: list[str] = []
-    for _r in _rows:
-        _tk = (_r.get('ticker') or '').upper()
-        _sh = int(_r.get('shares') or 0)
-        if _tk.endswith('.TW') or _tk.endswith('.TWO'):
-            _tickers.append(_tk)
-            _shares_map[_tk] = _sh
-        else:
-            _skipped.append(_tk)
-
-    if not _tickers:
-        st.warning('⚠️ 你的組合中沒有台股 ETF（需 .TW / .TWO 後綴），葡萄串領息法僅適用台股月配 ETF。')
-        return
-    if _skipped:
-        st.caption(f'ℹ️ 已略過非台股代碼：{", ".join(_skipped)}')
-
-    st.caption(f'📊 評估中：{len(_tickers)} 檔台股 ETF｜總股數 {sum(_shares_map.values()):,} 股')
-    with st.spinner('評估中…'):
-        _res = evaluate_income_ladder(_tickers, shares_map=_shares_map)
-    if _res.get('_err'):
-        st.info(_res['_err'])
-        return
-    if _res.get('invalid_tickers'):
-        st.warning(f'⚠️ 以下非台股代碼，已略過：{", ".join(_res["invalid_tickers"])}')
-    _covered = _res['covered_months']
-    _missing = sorted(_res['missing_months'])
-    if len(_covered) >= 12:
-        st.success(f'✅ 完美覆蓋 12/12 月｜年現金流預估 {_res["annual_cashflow"]:,.0f} 元（依實際持股股數）')
-    else:
-        st.warning(f'⚠️ Cover {len(_covered)}/12 月，缺月份：{_missing}')
-    _m1, _m2, _m3 = st.columns(3)
-    _m1.metric('覆蓋月數', f'{len(_covered)}/12')
-    _m2.metric('缺口月份', len(_missing))
-    _m3.metric('年現金流', f'{_res["annual_cashflow"]:,.0f}')
-    st.markdown('##### 📅 12 月份配息分布')
-    _render_month_grid(_res['month_etfs'], _res['missing_months'])
-    st.markdown('##### 💰 月現金流預估（依實際持股股數）')
-    _cf = _res['monthly_cashflow']
-    _cf_df = pd.DataFrame(
-        {'月份': [f'{m}月' for m in range(1, 13)],
-         '現金流': [_cf.get(m, 0.0) for m in range(1, 13)]}
-    ).set_index('月份')
-    st.bar_chart(_cf_df)
-
-
 def render_grape_ladder(gemini_fn=None) -> None:
-    """Streamlit UI 對外入口 — 主視圖：評估你現有的 ETF 組合（讀組合配置持股）。"""
+    """Streamlit UI 對外入口 — 主視圖：💡 系統提議（從高股息 10 檔自動挑選最佳組合）。
+
+    註：評估你現有持股的月配息分布功能已下放到 etf_tab_portfolio 的「💰 配息日曆 × 年度現金流預估」（PR #6 去重）。
+    """
     st.markdown('### 📅 葡萄串領息法')
     st.caption('「不同月配 ETF」組合形成「葡萄串」：讓每個月都有息可領。'
-               '資料來源：yfinance 近 ~13 月實際除息紀錄。')
-    _render_evaluate_subtab()
-    with st.expander('💡 還沒有持股？讓系統從高股息 10 檔自動挑選最佳組合', expanded=False):
-        _render_propose_subtab()
+               '本區從高股息 10 檔自動挑選最佳組合；'
+               '若想看你既有持股的月配息分布，請見上方「💰 配息日曆 × 年度現金流預估」。')
+    _render_propose_subtab()

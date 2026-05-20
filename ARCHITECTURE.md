@@ -687,6 +687,30 @@ ETF 回測子頁（render_etf_backtest）額外流程：
 
 **設計理由**：避免「進頁顯示上次抓到的舊值」誤判 — 收盤後、盤前、離線時的過時數字會讓使用者以為是當下行情。改成按鈕觸發後，**按的當下＝盤面當下＝決策當下真實狀態**，語意一致。副標動態顯示「即將抓取（無快取）」or「更新於 HH:MM:SS」讓資料新鮮度可追溯。
 
+#### Google Sheet 雲端儲存：使用者持股組合可攜（PR #5）
+
+`gsheet_portfolio.py` 提供 5 純函式 API（`is_configured` / `list_portfolios` / `load_portfolio` / `save_portfolio` / `delete_portfolio`），讓 ETF 組合配置 TAB 支援多組命名持股組合（攻擊組合 / 存股組合 / 老婆帳戶 …）跨 session、跨裝置儲存。
+
+**Schema**（單一 worksheet `portfolios`）：
+
+| 欄位 | 型別 | 說明 |
+|------|------|------|
+| `name` | str | 組合名稱（多組以多列共用同表） |
+| `ticker` | str | 股票/ETF 代號（自動 upper） |
+| `lots` | float | 持有張數（1 張 = 1000 股） |
+| `avg_price` | float | 平均買入價格 |
+| `updated_at` | str | `YYYY-MM-DD HH:MM:SS` 寫入時間戳 |
+
+**設計**：
+- 依賴 `gspread` + `google-auth`，憑證從 `st.secrets['gcp_service_account']` 讀（Service Account JSON），Sheet ID 從 `st.secrets['portfolio_sheet_id']` 讀
+- OAuth client + worksheet handle 用 `st.cache_resource` 共享（同 session 不重複認證）
+- 未配置 secrets 時 `is_configured()` 回 `False`，UI 顯 warning 不爆炸 — 純可選增強功能
+- 同名儲存：先過濾掉舊列再 append，不堆疊重複；刪除：rebuild 整張 worksheet 跳過該組
+- 載入後在 UI 層 `pop('etf_p_table')` 清 `st.data_editor` widget state，觸發 rerun 讓新資料流入 `_default_df`
+- 儲存讀 `edited_df`（data_editor 回傳值）而非 `st.session_state['etf_p_table']` — 後者在 data_editor 場景儲存的是 edit-deltas (`{'edited_rows', 'added_rows', 'deleted_rows'}`)，不是完整 DataFrame
+
+**設計理由**：Streamlit Cloud 多人共用且容器重啟會洗，本地檔不持久；下載/上傳 JSON 則需手動管理檔案。Google Sheet 一次設定、跨裝置自動同步、Sheet 也可手動編輯查看，是兼具可攜性與低門檻的方案。憑證在 `secrets.toml` 不入 git，安全性與 FINMIND_TOKEN 等 secrets 同層級。
+
 > **融資維持率已於 v10.54.0 移除**：原三段備援（TWSE MI_MARGN / wantgoo / OpenAPI）
 > 因 Streamlit Cloud 不在台灣 IP 段，透過代理仍經常 8s+ 失敗，且 v4 引擎的
 > `is_margin_danger` 分支貢獻有限，整段拆除以瘦身冷啟動。

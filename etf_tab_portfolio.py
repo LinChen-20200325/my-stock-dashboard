@@ -3,14 +3,18 @@
 依賴策略
 ========
 - Top-level: streamlit
-- 函式內 late import 14 個依賴：
+- 函式內 late import：
   * stdlib: numpy, pandas
-  * 外部: unified_decision.render_unified_decision
-  * etf_dashboard.py 內部 helper (10):
+  * etf_dashboard.py 內部 helper：
     _check_sector_exposure / _colored_box / _compute_etf_warroom_row
-    / _plot_correlation / _teacher_conclusion
-    / fetch_etf_dividends / fetch_etf_info / fetch_etf_price
-    / macro_allocation_banner
+    / _plot_correlation / _plot_holdings_overlap / _render_weakness_table
+    / _teacher_conclusion / build_holdings_overlap_matrix
+    / compute_etf_weakness_row / fetch_etf_dividends / fetch_etf_holdings
+    / fetch_etf_info / fetch_etf_price / macro_allocation_banner
+
+去重歷史
+========
+- PR #6：刪 render_unified_decision 呼叫（與 etf_tab_ai.py「ETF AI 首席策略師」重疊）
 
 呼叫端
 ======
@@ -27,7 +31,6 @@ def render_etf_portfolio(gemini_fn=None):
     # ─ Late imports（避免循環 import）─
     import numpy as np
     import pandas as pd
-    from unified_decision import render_unified_decision
     from etf_dashboard import (
         _check_sector_exposure, _colored_box, _compute_etf_warroom_row,
         _plot_correlation, _plot_holdings_overlap, _render_weakness_table,
@@ -706,24 +709,6 @@ def render_etf_portfolio(gemini_fn=None):
         'total_value': total_value, 'regime': regime,
         'loss_pct': loss_pct,
     }
-
-    # ── 統一投資決策分析模組（AI 首席顧問決策中心）──────────────
-    render_unified_decision(gemini_fn, {
-        'type': 'portfolio',
-        'id':   'etf_portfolio',
-        'data': {
-            '組合明細': [
-                {'ETF': r['ticker'],
-                 '目標%': r['target_pct'],
-                 '實際%': r['actual_pct'],
-                 '偏離%': round(r['deviation'], 1)}
-                for r in rows
-            ],
-            '壓力測試損失(S&P500跌20%)': f'{loss_pct:.1f}%',
-            '再平衡筆數':                len(rebal_actions),
-            '大盤狀態':                  regime,
-        },
-    })
 
 
 def _render_oauth_panel(_gsp) -> bool:
