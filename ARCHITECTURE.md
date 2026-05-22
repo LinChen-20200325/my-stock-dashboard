@@ -511,10 +511,11 @@ ETF 組合子頁（render_etf_portfolio）額外流程：
        │
        ├─ 相關係數矩陣計算 → 熱力圖（價格報酬 Pearson）
        ├─ 持股 Overlap 矩陣（PR #2）→ 熱力圖（fetch_etf_holdings + Σmin / Jaccard）
+       │     └  雙源（PR #22）：proxy_helper.fetch_url 主源（NAS Squid 台灣 IP）→ curl_cffi fallback
        ├─ 主動 ETF 弱勢度檢測（PR #3）→ ProgressColumn 表格
        │     │  is_active_etf 過濾 → calc_weakness_metrics
        │     │  大跌弱勢率 / 反彈弱勢率 / 連敗季數 / TE%
-       │     └  fetch_etf_manager 標註經理人任期；連敗 ≥ 2 季 → 紅卡換股建議
+       │     └  fetch_etf_manager 標註經理人任期（PR #22 同改雙源）；連敗 ≥ 2 季 → 紅卡換股建議
        ├─ 組合績效回測（CAGR / Sharpe / MDD）
        ├─ _render_monte_carlo()：蒙地卡羅模擬（1000 次路徑）
        └─ _etf_ai_portfolio()：組合 AI 評斷
@@ -1619,6 +1620,7 @@ with tab_edu:
 | **PMI 診斷** | 當「🇹🇼 台灣製造業 PMI」進入「資料異常清單」時，自動於下方加 `🔬 8 段備援源詳細診斷` expander；按鈕觸發 `macro_core.diagnose_tw_pmi_sources()` 逐源探測，輸出 {method, status (✅/⚠️/❌/⚪), detail, url} 表格（PR #53）。此外 `fetch_tw_pmi` 本身 8 段備援於 commit `8d3fb71` 補完每段 `errs` 追蹤（無回應 / HTTP 非 200），讓 `_err_pmi` 完整呈現所有源根因 |
 | **私募 ETF 判別** | `etf_tab_single._likely_private` 啟發式：台股 ETF 但 AUM + 費用率 + NAV 三主流源皆空 → 視為私募/特殊 ETF；health_inspector 將三列同步標記 `probe_status='na'`，訊息「私募/特殊 ETF — AUM、費用率、NAV 主流資料源皆未揭露」（commit `c3250d7`）|
 | **批次分析空 K 線** | `tab_stock_grp._fetch_single_t3` 當 yfinance + FinMind 雙源皆空時，於 result 帶入 `error` 訊息（供 `_fetch_err` → `error_msg` 顯示），且**跳過 4hr 快取**避免短期持續空轉（commit `26da8fb`）|
+| **主動 ETF 經理人/持股探測** | ETF Raw Data expander 內 `🏃 主動 ETF 經理人 / 持股 MoneyDJ 探測`（PR #22）：每檔主動式 ETF 顯示 `✅ 名字 + 任期天數` / `❌ 抓取失敗（403 / regex 漏 / proxy 掛掉）`；被動式 ETF 標 `⚪ 不適用`。持股檔數同三態探測。診斷意義：MoneyDJ 反爬擋海外 IP，`fetch_etf_manager` + `fetch_etf_holdings` 走 `proxy_helper.fetch_url`（NAS Squid 台灣 IP）為主、`curl_cffi` 為 fallback；此探測直接看 proxy 是否通 |
 
 ---
 
