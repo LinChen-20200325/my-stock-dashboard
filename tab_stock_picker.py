@@ -441,11 +441,12 @@ def _check_book_value(fs: dict, df) -> str:
     if _ca <= 0:
         return '❓ N/A'
     try:
-        _ncw = float(_ca) - float(_liab)
-        if _ncw > 0:
-            return f'✅ 淨流動 +{_ncw/1e6:.0f}百萬'
+        # fs 值單位為「千元」→ 換算億元：千 / 1e5
+        _ncw_yi = (float(_ca) - float(_liab)) / 1e5
+        if _ncw_yi > 0:
+            return f'✅ 淨流動 +{_ncw_yi:,.0f}億'
         else:
-            return f'❌ 淨流動 {_ncw/1e6:.0f}百萬'
+            return f'❌ 淨流動 {_ncw_yi:,.0f}億'
     except (TypeError, ValueError):
         return '❓ N/A'
 
@@ -555,21 +556,21 @@ def _check_macd_bullish(df) -> str:
 
 
 def _check_bollinger_opening(df) -> str:
-    """布林通道剛開口（band 寬度近 5 日均值 > 前 20 日均值 1.3 倍 → 突破前的瘦窄轉放大）。"""
+    """布林通道剛開口（band 寬度近 5 日均值 > 前 20 日均值 1.3 倍 → 突破前的瘦窄轉放大）。
+
+    註：tech_indicators.calc_bollinger 只回最後一日純量 dict，無法算寬度時序，
+    故此處自行 rolling 計算整段 band-width series。
+    """
     try:
-        from tech_indicators import calc_bollinger
-        _df_b = df.rename(columns={'Close': 'close', 'High': 'high', 'Low': 'low'})
-        _bb = calc_bollinger(_df_b, window=20, mult=2)
-        # calc_bollinger 回 dict-like 含 upper/lower/mid 或 tuple — 兼容
-        if isinstance(_bb, dict):
-            _up, _lo = _bb.get('upper'), _bb.get('lower')
-        elif isinstance(_bb, tuple) and len(_bb) >= 3:
-            _mid, _up, _lo = _bb[0], _bb[1], _bb[2]
-        else:
-            return '❓ calc_bollinger 回傳異常'
-        if _up is None or _lo is None or len(_up.dropna()) < 25:
+        _close = df['Close']
+        if len(_close.dropna()) < 25:
             return '❓ 不足 25 日'
-        _width = (_up - _lo) / df['Close']  # 標準化寬度
+        _ma = _close.rolling(20).mean()
+        _std = _close.rolling(20).std()
+        _width = (_ma + 2 * _std - (_ma - 2 * _std)) / _ma  # = 4*std/ma 標準化寬度
+        _width = _width.dropna()
+        if len(_width) < 25:
+            return '❓ 不足 25 日'
         _recent = _width.iloc[-5:].mean()
         _baseline = _width.iloc[-25:-5].mean()
         if _baseline <= 0:
@@ -586,13 +587,22 @@ def _check_bollinger_opening(df) -> str:
 
 
 def _check_kd_golden_cross(df) -> str:
-    """KD 低檔（K<20）黃金交叉。"""
+    """KD 低檔（K<20）黃金交叉。
+
+    註：tech_indicators.calc_kd 只回最後一日純量 (k, d)，無法判斷「昨日 K<D 今日 K>D」
+    的交叉，故此處自行算 K/D series。
+    """
     try:
-        from tech_indicators import calc_kd
-        # 確保欄位名一致（calc_kd 接受 close/high/low 小寫）
-        _df_kd = df.rename(columns={'Close': 'close', 'High': 'high', 'Low': 'low'})
-        _k, _d = calc_kd(_df_kd, period=9)
-        if _k is None or _d is None or len(_k) < 2:
+        if len(df) < 11:
+            return '❓ 不足 9 日'
+        _low_n = df['Low'].rolling(9).min()
+        _high_n = df['High'].rolling(9).max()
+        _rsv = ((df['Close'] - _low_n) / (_high_n - _low_n).replace(0, 1)) * 100
+        _k = _rsv.ewm(com=2, adjust=False).mean()
+        _d = _k.ewm(com=2, adjust=False).mean()
+        _k = _k.dropna()
+        _d = _d.dropna()
+        if len(_k) < 2 or len(_d) < 2:
             return '❓ 不足 9 日'
         _k_now, _d_now = float(_k.iloc[-1]), float(_d.iloc[-1])
         _k_prev, _d_prev = float(_k.iloc[-2]), float(_d.iloc[-2])
@@ -654,42 +664,58 @@ def _check_institutional_buying(stock_id: str) -> str:
 
 
 def _check_major_holders(stock_id: str) -> str:
-    """大戶（≥1000 張或最大級距）持股比例近 2 週增加（集保股權分散表）。"""
+    """大戶（≥1000 張 / 400 張級距）持股比例近 2 週增加（集保股權分散表）。
+
+    FinMind dataset 欄位可能因版本而異 — 動態偵測 level / percent 欄位名；
+    無資料時回 ⚠️（多為 FinMind 免費 token 不含此 premium 資料集，非錯誤）。
+    """
     try:
         import os as _os_mh
         import datetime as _dt_mh
         import requests as _rq_mh
         _tok = _os_mh.environ.get('FINMIND_TOKEN', '')
-        _start = (_dt_mh.date.today() - _dt_mh.timedelta(days=45)).strftime('%Y-%m-%d')
+        _start = (_dt_mh.date.today() - _dt_mh.timedelta(days=60)).strftime('%Y-%m-%d')
         _p = {'dataset': 'TaiwanStockHoldingSharesPer',
               'data_id': stock_id, 'start_date': _start}
         if _tok:
             _p['token'] = _tok
         _r = _rq_mh.get('https://api.finmindtrade.com/api/v4/data',
                          params=_p, timeout=15)
-        _data = _r.json().get('data', []) if _r.status_code == 200 else []
+        _j = _r.json() if _r.status_code == 200 else {}
+        _data = _j.get('data', [])
         if not _data:
-            return '❓ FinMind 無股權'
-        # 取「大戶級距」— FinMind HoldingClass 最大級距通常是「1,000,001 股以上」(=1000 張+)
-        # 用 percent 欄位（持股比例）依日期比較
+            # 區分：premium 限制 vs 真無資料
+            _msg = str(_j.get('msg', '')).lower()
+            if 'limit' in _msg or 'permission' in _msg or 'sponsor' in _msg:
+                return '⚠️ 需付費 token'
+            return '⚠️ 集保無資料'
+        # 動態找欄位名
+        _sample = _data[0]
+        _level_key = next((k for k in _sample
+                           if 'level' in k.lower() or 'class' in k.lower() or '分級' in k), None)
+        _pct_key = next((k for k in _sample
+                         if 'percent' in k.lower() or 'ratio' in k.lower() or '比例' in k), None)
+        if _level_key is None or _pct_key is None:
+            return '❓ 欄位不符'
+        # 鎖定大戶級距：含「1,000,001」「400,001」「以上」或數字級距 ≥ 14
         _by_date: dict = {}
         for _row in _data:
-            _cls = str(_row.get('HoldingSharesLevel', _row.get('level', '')))
-            # 鎖定大戶級距：含「1,000,001」或「以上」或級距 15（FinMind 最大級距）
-            if '1,000,001' not in _cls and '以上' not in _cls and _cls not in ('15', '16'):
+            _cls = str(_row.get(_level_key, ''))
+            _is_major = ('1,000,001' in _cls or '400,001' in _cls or '以上' in _cls
+                         or _cls in ('14', '15', '16', '17'))
+            if not _is_major:
                 continue
             _d = _row.get('date', '')
             try:
-                _pct = float(_row.get('percent', 0) or 0)
+                _pct = float(_row.get(_pct_key, 0) or 0)
             except (TypeError, ValueError):
                 continue
-            # 同日多個大戶級距取最大比例（保守）
             _by_date[_d] = max(_by_date.get(_d, 0), _pct)
         if len(_by_date) < 2:
-            return '❓ 週數不足'
+            return '⚠️ 大戶級距資料不足'
         _dates = sorted(_by_date.keys(), reverse=True)
         _now = _by_date[_dates[0]]
-        _ago = _by_date[_dates[min(2, len(_dates) - 1)]]  # 約 2 週前
+        _ago = _by_date[_dates[min(2, len(_dates) - 1)]]
         _chg = _now - _ago
         if _chg > 0.1:
             return f'✅ 大戶+{_chg:.2f}%'
