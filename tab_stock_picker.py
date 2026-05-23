@@ -45,22 +45,19 @@ def render_tab_stock_picker(gemini_fn=None):
     st.markdown('### 🎯 智慧選股 — 三階段濾網')
     st.caption('專業台股投資策略：① 基本面防禦 → ② 籌碼技術 → ③ AI 綜合建議。'
                '輸入觀察清單 10-30 檔，系統自動跑三階段篩選並提供配置建議。')
-    st.caption('💡 MVP 第一版：實作 7 項即時條件 + 5 項「⏳ 待補」placeholder（後續 PR 補實）。')
+    st.caption('💡 全 15 項條件實作完成：Stage 1 基本面 ×9 + Stage 2 籌碼技術 ×6 + Stage 3 AI 建議。')
 
     # ── Section 1：輸入觀察清單（沿用組合配置 data_editor 慣例）─────
     st.markdown('#### 📋 輸入觀察清單（股票代號 4 位數，10-30 檔）')
     _default = pd.DataFrame({
         '股票代號': ['2330', '0050', '00878', '2412', '2454'],
-        '備註':     ['台積電', '元大台灣50', '國泰永續高股息', '中華電', '聯發科'],
     })
     edited_df = st.data_editor(
         _default, num_rows='dynamic', hide_index=True,
-        use_container_width=True, key='picker_table',
+        use_container_width=False, key='picker_table',
         column_config={
             '股票代號': st.column_config.TextColumn('股票代號', required=True, width='small',
                                                    help='4 位數台股代號（不需 .TW 後綴）'),
-            '備註':    st.column_config.TextColumn('備註', width='medium',
-                                                   help='公司名稱或標籤'),
         })
 
     if not st.button('🎯 開始三階段篩選', key='picker_btn',
@@ -95,7 +92,6 @@ def render_tab_stock_picker(gemini_fn=None):
     st.markdown('#### 📊 Stage 1：基本面防禦與成長')
     _s1_df = pd.DataFrame([{
         '代號':       r['ticker'],
-        '備註':       r.get('note', ''),
         '負債比':     r['debt_ratio_label'],
         '三率三升':   r['three_rate_label'],
         '5Y 配息':    r['div_5y_label'],
@@ -117,7 +113,6 @@ def render_tab_stock_picker(gemini_fn=None):
     st.markdown('#### ⚡ Stage 2：籌碼與技術面鎖定（發動訊號）')
     _s2_df = pd.DataFrame([{
         '代號':       r['ticker'],
-        '備註':       r.get('note', ''),
         'MA20 站穩':  r['ma20_label'],
         'MACD 翻紅':  r['macd_label'],
         'KD 黃叉':    r['kd_label'],
