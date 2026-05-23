@@ -514,6 +514,15 @@ def fetch_etf_manager(ticker: str):
             _err_trace.append(f'{_endpoint}: regex 例外 {type(_e).__name__}')
             print(f'[MDJ/manager] ❌ regex parse {_t} {_endpoint}: {type(_e).__name__}: {_e}')
 
+    # ── 4. SITCA fallback — 與費用率同 proxy 路徑（已證可走）────────
+    if _t.replace('.TW', '').replace('.TWO', '').isdigit():
+        _sitca = _fetch_sitca_manager(_t)
+        if _sitca and _sitca.get('name'):
+            print(f'[SITCA/manager] ✅ {_t} = {_sitca["name"]}')
+            return _sitca
+        else:
+            _err_trace.append('sitca: 多 URL/多 column 比對全失敗')
+
     # 全部失敗 — 寫 session_state 給診斷面板讀
     try:
         if st is not None:
@@ -523,6 +532,66 @@ def fetch_etf_manager(ticker: str):
         pass
     return None
 
+
+@st.cache_data(ttl=604800, show_spinner=False)
+def _fetch_sitca_manager(ticker: str):
+    """SITCA fallback：投信投顧公會基金經理人查詢。
+
+    跟 fetch_sitca_expense_ratio 同 proxy 路徑（已驗證可走）；pd.read_html 後動態
+    掃描所有表格找「代號／基金代碼」+「經理人／基金經理人」雙欄。
+
+    Returns
+    -------
+    dict | None  {'name': ..., 'since': None, 'tenure_days': None}（任期 SITCA 通常不揭露）
+    """
+    from proxy_helper import fetch_url as _fu_sm
+    import pandas as _pd_sm
+    _t = (ticker or '').replace('.TW', '').replace('.tw', '').replace('.TWO', '').strip()
+    if not _t or not _t.isdigit():
+        return None
+    _tn = _t.lstrip('0') or '0'
+
+    _urls = [
+        'https://www.sitca.org.tw/ROC/Industry/IN2401.aspx?pid=IN2401_01',
+        'https://www.sitca.org.tw/ROC/Industry/IN2421.aspx?pid=IN2421_01',
+        'https://www.sitca.org.tw/ROC/Industry/IN2422.aspx?pid=IN2422_01',
+        'https://www.sitca.org.tw/ROC/Industry/IN2411.aspx?pid=IN2411_01',
+    ]
+    for _url in _urls:
+        try:
+            r = _fu_sm(_url, timeout=15, attempts=2)
+            if r is None or r.status_code != 200 or len(r.text or '') < 500:
+                continue
+            r.encoding = 'utf-8'
+            try:
+                tables = _pd_sm.read_html(r.text)
+            except ValueError:
+                continue
+            for tbl in tables:
+                code_col = next((c for c in tbl.columns
+                                 if any(k in str(c) for k in
+                                        ('代號', '代碼', '基金統編', '統一編號', 'Code'))), None)
+                mgr_col = next((c for c in tbl.columns
+                                if any(k in str(c) for k in
+                                       ('經理人', '基金經理', '現任經理'))), None)
+                if code_col is None or mgr_col is None:
+                    continue
+                _digits = tbl[code_col].astype(str).str.replace(r'\D', '', regex=True)
+                row = tbl[_digits.where(_digits != '', '0').str.lstrip('0').replace('', '0') == _tn]
+                if row.empty:
+                    continue
+                _raw = str(row[mgr_col].iloc[0]).strip()
+                if not _raw or _raw.lower() == 'nan' or _raw.isdigit():
+                    continue
+                # 多人共同經理用「、」「,」分隔；可能附括號註記，取首位淨化
+                _name = _raw.split('、')[0].split(',')[0].split('(')[0].split('（')[0].strip()
+                if 2 <= len(_name) <= 8:
+                    print(f'[SITCA/manager] ✅ {_t} = {_name} (url={_url[-30:]})')
+                    return {'name': _name, 'since': None, 'tenure_days': None}
+        except Exception as e:
+            print(f'[SITCA/manager] {_t} {_url[-30:]}: {type(e).__name__}: {e}')
+            continue
+    return None
 
 
 def get_etf_expense_ratio_safe(ticker: str):

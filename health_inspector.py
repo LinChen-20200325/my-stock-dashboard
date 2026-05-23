@@ -1118,12 +1118,12 @@ def render_data_health_raw():
                                 proxy=True))
                         else:
                             _last_err = (st.session_state.get('_etf_manager_last_err') or {}).get(_tk_p)
-                            _err_str = f'MoneyDJ 3 endpoint 全失敗 — {_last_err}' if _last_err else 'MoneyDJ 抓取失敗（HTTP / regex / proxy 任一原因）'
+                            _err_str = f'多源全失敗 — {_last_err}' if _last_err else '多源全失敗（HTTP / regex / proxy 任一原因）'
                             _probe_rows.append(_row(
                                 f'{_tk_p} 經理人',
                                 None, 'static',
                                 error_msg=_err_str,
-                                source='MoneyDJ', endpoint='Basic0001/0006/0011',
+                                source='MoneyDJ + SITCA', endpoint='Basic0001/0006/0011 + SITCA IN24XX',
                                 proxy=True))
                     # 持股探測（簡版：有 / 無）
                     try:
