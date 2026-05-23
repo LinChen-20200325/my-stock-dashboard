@@ -405,23 +405,26 @@ def is_active_etf(ticker: str) -> bool:
 
 @st.cache_data(ttl=604800, show_spinner=False)
 def fetch_etf_manager(ticker: str):
-    """從 MoneyDJ ETF Basic0001 抓「現任經理人 + 任期起始日」。
-
-    URL: https://www.moneydj.com/ETF/X/Basic/Basic0001.xdjhtm?etfid=XXXX.TW
+    """從 MoneyDJ ETF 抓「現任經理人 + 任期起始日」。
 
     抓取策略
     --------
-    1. **proxy_helper.fetch_url（NAS Squid 台灣 IP）為主源** — MoneyDJ 反爬擋海外 IP
-       回 403，Streamlit Cloud 必須走 proxy
-    2. curl_cffi chrome124 為 fallback（本機開發或 proxy 掛掉時）
+    多 URL 嘗試（同 proxy，不同 endpoint）：
+      1. Basic0001.xdjhtm — 基本資料（傳統入口）
+      2. Basic0006.xdjhtm — 基金概觀（基金資訊類，新 ETF 可能在此）
+      3. Basic0011.xdjhtm — 基金特色（少見但部分基金有）
+    每 URL 內：proxy_helper 主源 → curl_cffi fallback。
+
+    Regex 寬鬆策略
+    --------------
+    名字：「經理人」「基金經理人」「現任經理人」(中間可有 HTML/whitespace) 後接中文 2-8 字
+    任期：「到職日」「上任日」「任期」「管理基金日」「派任日」其中之一 + 日期
 
     Returns
     -------
     dict | None
         成功：{'name': '張三', 'since': '2024-04-15', 'tenure_days': 400}
-        失敗：None；只抓到名字無日期：{'name', 'since': None, 'tenure_days': None}
-
-    Cache TTL 7 日（經理人異動頻率低）。
+        失敗：None；失敗原因寫入 st.session_state['_etf_manager_last_err'][ticker]
     """
     import re as _re_mg
     from datetime import date as _date_mg
@@ -430,61 +433,96 @@ def fetch_etf_manager(ticker: str):
         return None
     if '.' not in _t:
         _t = f'{_t}.TW'
-    _url = f'https://www.moneydj.com/ETF/X/Basic/Basic0001.xdjhtm?etfid={_t}'
 
-    # ── 1. proxy_helper（NAS Squid 台灣 IP）主源 ───────────────
-    _txt = None
-    try:
-        from proxy_helper import fetch_url as _fu_mg
-        _r = _fu_mg(_url, timeout=12, attempts=2)
-        if _r is not None and _r.status_code == 200:
-            _r.encoding = 'utf-8'
-            _txt = _r.text
-        else:
-            _code = _r.status_code if _r is not None else 'None'
-            print(f'[MDJ/manager] proxy {_t}: HTTP {_code}')
-    except Exception as _ep:
-        print(f'[MDJ/manager] proxy 異常 {_t}: {type(_ep).__name__}: {_ep}')
+    _urls = [
+        f'https://www.moneydj.com/ETF/X/Basic/Basic0001.xdjhtm?etfid={_t}',
+        f'https://www.moneydj.com/ETF/X/Basic/Basic0006.xdjhtm?etfid={_t}',
+        f'https://www.moneydj.com/ETF/X/Basic/Basic0011.xdjhtm?etfid={_t}',
+    ]
+    _err_trace: list[str] = []
 
-    # ── 2. curl_cffi fallback ─────────────────────────────────
-    if _txt is None:
+    for _url in _urls:
+        _txt = None
+        _endpoint = _url.split('/')[-1].split('?')[0]
+        # ── 1. proxy_helper（NAS Squid 台灣 IP）主源 ─────────────
         try:
-            from curl_cffi import requests as _cffi_mg
-            _r2 = _cffi_mg.get(_url, impersonate='chrome124', timeout=12)
-            if _r2.status_code == 200:
-                _txt = _r2.text
+            from proxy_helper import fetch_url as _fu_mg
+            _r = _fu_mg(_url, timeout=12, attempts=2)
+            if _r is not None and _r.status_code == 200 and len(_r.text or '') > 500:
+                _r.encoding = 'utf-8'
+                _txt = _r.text
             else:
-                print(f'[MDJ/manager] curl_cffi {_t}: HTTP {_r2.status_code}')
-        except Exception as _ec:
-            print(f'[MDJ/manager] curl_cffi 異常 {_t}: {type(_ec).__name__}: {_ec}')
+                _code = _r.status_code if _r is not None else 'None'
+                _ln = len(_r.text or '') if _r is not None else 0
+                _err_trace.append(f'proxy {_endpoint}: HTTP {_code} len={_ln}')
+                print(f'[MDJ/manager] proxy {_t} {_endpoint}: HTTP {_code} len={_ln}')
+        except Exception as _ep:
+            _err_trace.append(f'proxy {_endpoint}: {type(_ep).__name__}')
+            print(f'[MDJ/manager] proxy 異常 {_t} {_endpoint}: {type(_ep).__name__}: {_ep}')
 
-    if _txt is None:
-        return None
-
-    try:
-        _name_m = _re_mg.search(r'經理人[^<>\d]{0,30}?>?\s*([一-鿿]{2,8})\s*<', _txt)
-        _date_m = _re_mg.search(
-            r'(?:到職日|上任日|任期|管理基金日)[^\d]{0,30}?(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})',
-            _txt,
-        )
-        if not _name_m:
-            print(f'[MDJ/manager] ⚠️ {_t} 找不到經理人欄位')
-            return None
-        _name = _name_m.group(1).strip()
-        _since, _days = None, None
-        if _date_m:
-            _y, _mo, _d = (int(_date_m.group(i)) for i in (1, 2, 3))
+        # ── 2. curl_cffi fallback ────────────────────────────────
+        if _txt is None:
             try:
-                _dt = _date_mg(_y, _mo, _d)
-                _since = _dt.strftime('%Y-%m-%d')
-                _days = (_date_mg.today() - _dt).days
-            except ValueError:
-                pass
-        print(f'[MDJ/manager] ✅ {_t} = {_name} (since={_since}, days={_days})')
-        return {'name': _name, 'since': _since, 'tenure_days': _days}
-    except Exception as _e:
-        print(f'[MDJ/manager] ❌ regex parse {_t}: {type(_e).__name__}: {_e}')
-        return None
+                from curl_cffi import requests as _cffi_mg
+                _r2 = _cffi_mg.get(_url, impersonate='chrome124', timeout=12)
+                if _r2.status_code == 200 and len(_r2.text or '') > 500:
+                    _txt = _r2.text
+                else:
+                    _err_trace.append(f'cffi {_endpoint}: HTTP {_r2.status_code}')
+                    print(f'[MDJ/manager] curl_cffi {_t} {_endpoint}: HTTP {_r2.status_code}')
+            except Exception as _ec:
+                _err_trace.append(f'cffi {_endpoint}: {type(_ec).__name__}')
+                print(f'[MDJ/manager] curl_cffi 異常 {_t} {_endpoint}: {type(_ec).__name__}: {_ec}')
+
+        if _txt is None:
+            continue
+
+        # ── 3. 寬鬆 regex 嘗試解析 ────────────────────────────────
+        try:
+            # 名字：經理人 / 基金經理人 / 現任經理人 ... 中文 2-8 字
+            _name_m = _re_mg.search(
+                r'(?:基金|現任)?\s*經理人[^<>]{0,50}?>\s*([一-鿿]{2,8})\s*[<\(]',
+                _txt,
+            )
+            # 寬鬆 fallback：經理人後直接接中文（無 > 標籤）
+            if not _name_m:
+                _name_m = _re_mg.search(
+                    r'(?:基金|現任)?\s*經理人[^一-鿿\d]{0,30}?([一-鿿]{2,8})',
+                    _txt,
+                )
+            _date_m = _re_mg.search(
+                r'(?:到職日|上任日|任期|管理基金日|派任日|起聘日)[^\d]{0,30}?(\d{4})[/\-\.](\d{1,2})[/\-\.](\d{1,2})',
+                _txt,
+            )
+            if not _name_m:
+                _err_trace.append(f'{_endpoint}: 200 但 regex 無經理人')
+                print(f'[MDJ/manager] ⚠️ {_t} {_endpoint}: 200 但 regex 無經理人')
+                continue
+            _name = _name_m.group(1).strip()
+            _since, _days = None, None
+            if _date_m:
+                _y, _mo, _d = (int(_date_m.group(i)) for i in (1, 2, 3))
+                try:
+                    _dt = _date_mg(_y, _mo, _d)
+                    _since = _dt.strftime('%Y-%m-%d')
+                    _days = (_date_mg.today() - _dt).days
+                except ValueError:
+                    pass
+            print(f'[MDJ/manager] ✅ {_t} = {_name} via {_endpoint} (since={_since}, days={_days})')
+            return {'name': _name, 'since': _since, 'tenure_days': _days}
+        except Exception as _e:
+            _err_trace.append(f'{_endpoint}: regex 例外 {type(_e).__name__}')
+            print(f'[MDJ/manager] ❌ regex parse {_t} {_endpoint}: {type(_e).__name__}: {_e}')
+
+    # 全部失敗 — 寫 session_state 給診斷面板讀
+    try:
+        if st is not None:
+            _store = st.session_state.setdefault('_etf_manager_last_err', {})
+            _store[_t] = ' | '.join(_err_trace) if _err_trace else 'unknown'
+    except Exception:
+        pass
+    return None
+
 
 
 def get_etf_expense_ratio_safe(ticker: str):
