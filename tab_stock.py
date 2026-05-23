@@ -24,6 +24,47 @@ import streamlit as st
 from tab_helpers import format_condition_emoji, parse_cash_flow_ratio, safe_ma
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _fetch_share_capital(sid: str) -> float:
+    """FinMind 抓最新一季股本（普通股股本），回傳原始元值；失敗回 0。
+
+    供龍頭預警區計算「合約負債/資本支出 對 股本比」真實比例（取代舊版 >0 假判斷）。
+    Cache TTL 1 日（股本變動極低頻）。
+    """
+    import os as _os_sc
+    import datetime as _dt_sc
+    import requests as _rq_sc
+    try:
+        _tok = _os_sc.environ.get('FINMIND_TOKEN', '')
+        _start = (_dt_sc.date.today() - _dt_sc.timedelta(days=540)).strftime('%Y-%m-%d')
+        _p = {'dataset': 'TaiwanStockBalanceSheet', 'data_id': sid, 'start_date': _start}
+        if _tok:
+            _p['token'] = _tok
+        _r = _rq_sc.get('https://api.finmindtrade.com/api/v4/data',
+                        params=_p, timeout=15)
+        _data = _r.json().get('data', []) if _r.status_code == 200 else []
+        if not _data:
+            return 0.0
+        _dates = sorted({_row.get('date', '') for _row in _data}, reverse=True)
+        _latest = _dates[0] if _dates else ''
+        for _row in _data:
+            if _row.get('date') != _latest:
+                continue
+            _t = str(_row.get('type', ''))
+            _nm = str(_row.get('origin_name', ''))
+            if (_t in ('CommonStock', 'OrdinaryShare', 'ShareCapital')
+                    or '股本' in _t or '普通股股本' in _nm or '股本' in _nm):
+                try:
+                    _v = float(str(_row.get('value', 0) or 0).replace(',', ''))
+                    if _v > 0:
+                        return _v
+                except (TypeError, ValueError):
+                    continue
+        return 0.0
+    except Exception:
+        return 0.0
+
+
 def render_tab_stock():
     # ─ Late imports（避免循環 import）─
     import datetime
@@ -567,19 +608,20 @@ padding:14px 18px;margin-bottom:12px;">
             st.info('載入個股資料後顯示進出場訊號')
 
         # ══ 龍頭預警區（孫慶龍龍多策略最高等級）══════════════════
+        # cl2 / cx2 為 FinMind 原始元值；對「股本」算真實比例（取代舊版 >0 假判斷）
         _is_dragon = False
         _dragon_reasons = []
         try:
-            if cl2 is not None and cl2 > 0:
-                # 用股價估算股本（簡化：取市值代理）
-                _price_now = float(df2['close'].iloc[-1]) if df2 is not None and not df2.empty else 0
-                # 合約負債 / 股本比估算（cl2 單位億）
-                if cl2 > 0:
-                    _dragon_reasons.append(f'合約負債 {cl2:.1f}億（>股本50% → 未來3-6月訂單保障）')
+            _capital = _fetch_share_capital(sid2)  # 股本（元）
+            if _capital > 0:
+                if cl2 is not None and cl2 > 0 and cl2 / _capital >= 0.5:
+                    _dragon_reasons.append(
+                        f'合約負債 {cl2/1e8:.1f}億（達股本 {cl2/_capital*100:.0f}% → 未來3-6月訂單保障）')
                     _is_dragon = True
-            if cx2 is not None and cx2 > 0:
-                _dragon_reasons.append(f'資本支出 {cx2:.1f}億（>股本80% → 大擴廠，看好未來需求）')
-                _is_dragon = True
+                if cx2 is not None and cx2 > 0 and cx2 / _capital >= 0.8:
+                    _dragon_reasons.append(
+                        f'資本支出 {cx2/1e8:.1f}億（達股本 {cx2/_capital*100:.0f}% → 大擴廠，看好未來需求）')
+                    _is_dragon = True
         except Exception:
             pass
 

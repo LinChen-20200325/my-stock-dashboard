@@ -9,7 +9,7 @@ Stage 1：基本面防禦與成長（9 項）
 - ✅ 負債比 < 50%（FinMind 資產負債表，金融股標 ⚠️ 不誤殺）
 - ✅ 三率三升 YoY（毛利率 / 營益率 / 淨利率 — FinMind 損益表 8 季）
 - ✅ 連續 5 年配息 + 平均殖利率 > 7%（yfinance.dividends）
-- ✅ PE 河流圖區間（便宜 <10 / 合理 <15 / 昂貴）
+- ✅ PE 河流圖區間（真 TTM EPS = 近 4 季加總；便宜 <10 / 合理 <15 / 昂貴）
 - ✅ 應收帳款周轉天數穩定（季變動 < 30%）
 - ✅ 存貨周轉率年化 > 4 次
 - ✅ 資本支出積極（CapEx > 股東權益 5%）
@@ -198,12 +198,13 @@ def _check_one_stock(ticker: str, today, yf) -> dict:
 
     # ── 一次抓財報（多個 Stage 1 helpers 共用）──────────────
     _fs = _fetch_fs_safe(ticker)
+    _qis = _fetch_quarterly_is(ticker)   # 多季損益表（三率三升 + PE TTM 共用）
 
     # ── Stage 1 條件 ──────────────────────────────────────────
     _r['debt_ratio_label']  = _check_debt_ratio(_fs)
-    _r['three_rate_label']  = _check_three_rate_growth(ticker)
+    _r['three_rate_label']  = _check_three_rate_growth(_qis)
     _r['div_5y_label']      = _check_dividend_5y(_df, _t_yf)
-    _r['pe_zone_label']     = _check_pe_zone(_fs, _df)
+    _r['pe_zone_label']     = _check_pe_zone(_qis, _df)
     _r['ar_turnover_label'] = _check_ar_turnover(_fs)
     _r['inv_turnover_label']= _check_inventory_turnover(_fs)
     _r['capex_label']       = _check_capex_vs_equity(_fs)
@@ -259,27 +260,26 @@ def _check_debt_ratio(fs: dict) -> str:
     return f'✅ {_v:.1f}%' if _v < 50 else f'❌ {_v:.1f}%'
 
 
-def _check_three_rate_growth(stock_id: str) -> str:
-    """三率三升：毛利率 / 營益率 / 淨利率近季 YoY 同步成長。
+def _fetch_quarterly_is(stock_id: str) -> dict:
+    """抓 FinMind 近 8 季損益表 → {date: {type: value}}（多 helper 共用，避免重複打 API）。
 
-    需多季資料 — 直接打 FinMind API 取近 8 季損益表。
+    回傳 dict（含 '_dates' key 為由近到遠排序的日期 list）；失敗回 {}。
     """
+    import os as _os_q
+    import datetime as _dt_q
+    import requests as _rq_q
     try:
-        import os as _os_tr
-        import datetime as _dt_tr
-        import requests as _rq_tr
-        _tok = _os_tr.environ.get('FINMIND_TOKEN', '')
-        _start = (_dt_tr.date.today() - _dt_tr.timedelta(days=900)).strftime('%Y-%m-%d')
+        _tok = _os_q.environ.get('FINMIND_TOKEN', '')
+        _start = (_dt_q.date.today() - _dt_q.timedelta(days=900)).strftime('%Y-%m-%d')
         _p = {'dataset': 'TaiwanStockFinancialStatements',
               'data_id': stock_id, 'start_date': _start}
         if _tok:
             _p['token'] = _tok
-        _r = _rq_tr.get('https://api.finmindtrade.com/api/v4/data',
-                         params=_p, timeout=15)
+        _r = _rq_q.get('https://api.finmindtrade.com/api/v4/data',
+                       params=_p, timeout=15)
         _data = _r.json().get('data', []) if _r.status_code == 200 else []
         if not _data:
-            return '❓ FinMind 無資料'
-        # by date：每季抓 Revenue / GrossProfit / OperatingIncome / NetIncome
+            return {}
         _quarters: dict = {}
         for _row in _data:
             _d = _row.get('date', '')
@@ -289,33 +289,42 @@ def _check_three_rate_growth(stock_id: str) -> str:
             except (TypeError, ValueError):
                 continue
             _quarters.setdefault(_d, {})[_t] = _v
-        _dates = sorted(_quarters.keys(), reverse=True)
-        if len(_dates) < 5:
-            return f'❓ 僅 {len(_dates)} 季'
-        # 同期：_dates[0] vs _dates[4] (假設按季為單位 排序)
-        _lat, _yoy = _quarters[_dates[0]], _quarters[_dates[4]]
-
-        def _margin(slot, num_keys, denom='Revenue'):
-            _r = slot.get(denom, 0)
-            if _r <= 0:
-                return None
-            _n = sum(slot.get(k, 0) for k in num_keys)
-            return _n / _r * 100 if _r else None
-
-        _now_gm = _margin(_lat, ['GrossProfit', 'GrossProfitLoss'])
-        _yoy_gm = _margin(_yoy, ['GrossProfit', 'GrossProfitLoss'])
-        _now_om = _margin(_lat, ['OperatingIncome', 'OperatingIncomeLoss'])
-        _yoy_om = _margin(_yoy, ['OperatingIncome', 'OperatingIncomeLoss'])
-        _now_nm = _margin(_lat, ['IncomeAfterTaxes', 'NetIncome', 'ProfitAfterTax'])
-        _yoy_nm = _margin(_yoy, ['IncomeAfterTaxes', 'NetIncome', 'ProfitAfterTax'])
-        _pairs = [(_now_gm, _yoy_gm), (_now_om, _yoy_om), (_now_nm, _yoy_nm)]
-        _valid = [(n, y) for n, y in _pairs if n is not None and y is not None]
-        if not _valid:
-            return '❓ 利潤欄位缺'
-        _ups = sum(1 for n, y in _valid if n > y)
-        return f'✅ {_ups}/3 升' if _ups == 3 else f'❌ {_ups}/3 升'
+        _quarters['_dates'] = sorted([d for d in _quarters if d != '_dates'], reverse=True)
+        return _quarters
     except Exception as _e:
-        return f'❓ {type(_e).__name__}'
+        print(f'[picker/is] {stock_id}: {type(_e).__name__}: {_e}')
+        return {}
+
+
+def _check_three_rate_growth(qis: dict) -> str:
+    """三率三升：毛利率 / 營益率 / 淨利率近季 YoY 同步成長（用共用 _fetch_quarterly_is 結果）。"""
+    if not qis:
+        return '❓ FinMind 無資料'
+    _dates = qis.get('_dates', [])
+    if len(_dates) < 5:
+        return f'❓ 僅 {len(_dates)} 季'
+    _lat, _yoy = qis[_dates[0]], qis[_dates[4]]
+
+    def _margin(slot, num_keys, denom='Revenue'):
+        _r = slot.get(denom, 0)
+        if _r <= 0:
+            return None
+        _n = sum(slot.get(k, 0) for k in num_keys)
+        return _n / _r * 100 if _r else None
+
+    _now_gm = _margin(_lat, ['GrossProfit', 'GrossProfitLoss'])
+    _yoy_gm = _margin(_yoy, ['GrossProfit', 'GrossProfitLoss'])
+    _now_om = _margin(_lat, ['OperatingIncome', 'OperatingIncomeLoss'])
+    _yoy_om = _margin(_yoy, ['OperatingIncome', 'OperatingIncomeLoss'])
+    _now_nm = _margin(_lat, ['IncomeAfterTaxes', 'NetIncome', 'ProfitAfterTax'])
+    _yoy_nm = _margin(_yoy, ['IncomeAfterTaxes', 'NetIncome', 'ProfitAfterTax'])
+    _pairs = [(_now_gm, _yoy_gm), (_now_om, _yoy_om), (_now_nm, _yoy_nm)]
+    _valid = [(n, y) for n, y in _pairs if n is not None and y is not None]
+    if not _valid:
+        return '❓ 利潤欄位缺'
+    _ups = sum(1 for n, y in _valid if n > y)
+    return f'✅ {_ups}/3 升' if _ups == 3 else f'❌ {_ups}/3 升'
+
 
 
 def _check_dividend_5y(df, yf_ticker) -> str:
@@ -346,15 +355,31 @@ def _check_dividend_5y(df, yf_ticker) -> str:
         return f'❓ {type(_e).__name__}'
 
 
-def _check_pe_zone(fs: dict, df) -> str:
-    """PE 河流圖區間（簡化版 — 用最新季 EPS × 4 估 TTM，三分位判讀便宜/合理/昂貴）。"""
-    if not fs:
+def _check_pe_zone(qis: dict, df) -> str:
+    """PE 河流圖區間 — 用真正 TTM EPS（近 4 季 EPS 加總），三分位判讀便宜/合理/昂貴。
+
+    回退：若多季 IS 不足 4 季，無法算真 TTM → 回 ❓（不再用單季 ×4 粗估誤判）。
+    """
+    if not qis:
         return '❓ 無財報'
-    _eps_q = fs.get('EPS')
-    if not _eps_q or _eps_q <= 0:
-        return '⚠️ 虧損 / EPS 缺'
+    _dates = qis.get('_dates', [])
+    if len(_dates) < 4:
+        return f'❓ EPS 僅 {len(_dates)} 季'
     try:
-        _eps_ttm = float(_eps_q) * 4
+        # TTM EPS = 近 4 季 EPS 加總
+        _eps_ttm = 0.0
+        _found = 0
+        for _d in _dates[:4]:
+            _slot = qis[_d]
+            _eps_q = _slot.get('EPS')
+            if _eps_q is None:
+                continue
+            _eps_ttm += float(_eps_q)
+            _found += 1
+        if _found < 4:
+            return f'❓ EPS 缺 {4 - _found} 季'
+        if _eps_ttm <= 0:
+            return '⚠️ 虧損股'
         _cur = float(df['Close'].iloc[-1])
         _pe = _cur / _eps_ttm
         if _pe < 10:
