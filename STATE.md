@@ -121,14 +121,14 @@
 - [ ] **#U4** 剩餘重構候選（可選）：tab_*.py / etf_tab_*.py 內 closure 沿用 7A/7B 模式抽純函式 + 補 test
 
 **程式碼技術債（功能簡化 / 資料源待補）**
-- [ ] **#U5** `tab_edu.py:38` — BWIBBU_d / BFI82U 兩指標無資料（結構複雜，待擴充 macro fetcher）
-- [ ] **#U6** `tab_edu.py:94` — 「其他」類指標暫無資料
-- [ ] **#U7** `tab_edu.py:165` — 單一最新值指標趨勢圖待補（需擴充 macro fetcher）
-- [ ] **#U8** `etf_tab_single.py:183` — 配息來源「平準金佔比」需公開說明書揭露，計畫加 SITCA 抓取
-- [ ] **#U9** `tab_stock.py:574` — 股本估算「簡化：取市值代理」，非精確股本
-- [ ] **#U10** `tab_stock_picker.py:350` — PE 河流圖「簡化版（最新季 EPS×4 估 TTM）」，非真正 TTM 4Q 加總
-- [ ] **#U11** `tab_stock_picker.py` `_check_major_holders` — FinMind `TaiwanStockHoldingSharesPer` 多為 premium，免費 token 回「⚠️ 需付費 token」（功能在但資料源受限；可改集保 TDCC 公開 API）
-- [ ] **#U12** `app.py:431` — 季財報前瞻動能「v3.35 簡化版」（合約負債+固定資產+資本支出）
+- [ ] **#U5** `tab_edu.py:38` — BWIBBU_d / BFI82U 兩指標無趨勢資料（低價值：BWIBBU_d 已在 yield_screener 有 fetcher，但教學 tab 走 session_state 背景 job 管線，資料形狀「全市場快照 vs 個指標趨勢」不合，硬接價值低；建議延後或重新設計需求）
+- [ ] **#U6** `tab_edu.py:94` — 「其他」類指標暫無資料（同 #U5 管線問題）
+- [ ] **#U7** `tab_edu.py:165` — 單一最新值指標趨勢圖待補（需擴充 macro fetcher 存歷史序列；中等工 + 線上不可驗）
+- [ ] **#U8** `etf_tab_single.py:183` — 配息「平準金佔比」需公開說明書揭露，計畫加 SITCA 抓取（⚠️ 全新端點，response 格式未知，sandbox 無法驗證，盲寫高風險 — 建議線上可測時再做）
+- [x] **#U9** ✅ `tab_stock.py` 龍頭預警區雙 bug 修復（單位 元→億 + 真實股本比 cl/股本≥50% cx/股本≥80%，新增 `_fetch_share_capital`）— PR `bfc60e7`
+- [x] **#U10** ✅ `tab_stock_picker._check_pe_zone` 改真 TTM 4Q EPS 加總（抽 `_fetch_quarterly_is` 共用）— PR `bfc60e7`
+- [ ] **#U11** `tab_stock_picker._check_major_holders` — FinMind `TaiwanStockHoldingSharesPer` 多為 premium（已 robust 處理回「⚠️ 需付費 token」）；改集保 TDCC 公開 API 需 ASP.NET form POST + 週資料解析，全新端點 sandbox 無法驗證，盲寫高風險 — 建議線上可測時再做
+- [x] **#U12** ✅ 結案（非技術債）：`app.py:429 fetch_financials` 的「v3.35 簡化版」僅為 docstring 版本標籤，函式運作正常（100% FinMind status=200），無未實作邏輯，不需動作
 
 ### 既有 Backlog（歷史紀錄）
 - **環境工**：49 條 stale remote branches 清理 → ✅ 產出 `cleanup_stale_branches.sh`（48 merged 主清單 + 2 unmerged opt-in），預設 DRY_RUN=1；sandbox HTTP 403 擋 push --delete，需本機 clone 後 `DRY_RUN=0 ./cleanup_stale_branches.sh` 執行
