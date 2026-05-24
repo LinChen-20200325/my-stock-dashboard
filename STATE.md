@@ -124,7 +124,9 @@
 | #49 #50 | feat(stock-grp): 個股組合故事化 — 「兩套排行」白話導讀 + SQ品質分/FGMS前瞻/批次財報體檢欄位白話 | 044c407 / 55e3cf0 |
 | #51 | fix(data): `_get_loader` 加版本鍵 — 改 loader 碼自動換新 `@st.cache_resource` 實例，解 hot-reload 後仍跑 PR #44 前舊 loader 的 NoneType 殘留 | 6470da6 |
 | #52 | fix(chip): 集保籌碼解析抓正確時序表 — 診斷定位表#9(343×16) 表頭未被當欄名 → 整數欄名升首列為表頭 + `_find_major_col` 補認「百分比」+ 評分加有效日期比例；修日期/大戶比例全 None | 1fc8365 |
-| #53 | feat(stock): 個股 AI 總結納入「近半年新聞」— `_fetch_stock_news` 加 `recency='6m'`+link+日期排序、新聞 5→25 則、可摺疊新聞清單（隨快取顯示）、prompt 加「步驟六 新聞事件面」+ 深度解析新聞 bullet | (本 PR) |
+| #53 | feat(stock): 個股 AI 總結納入「近半年新聞」— `_fetch_stock_news` 加 `recency='6m'`+link+日期排序、新聞 5→25 則、可摺疊新聞清單（隨快取顯示）、prompt 加「步驟六 新聞事件面」+ 深度解析新聞 bullet | 8e3a00e |
+| #54 | fix(stock): 半年新聞區塊永遠顯示（移除空清單 early-return）+ 空時 `st.info` 明講原因；快取分支 None sentinel 不顯示誤導空框 | 38d38b5 |
+| #55 | feat(stock): AI 五維總結補餵已算章節 — 關鍵價位(支撐壓力/停利停損)、近20日籌碼集中度、D2先行指標注入 prompt（防呆）；戰術建議強制引用實算價位、嚴禁虛構 | (本 PR) |
 
 > **v5.0 三大任務狀態**：Task 1 稽核修復 ✅ / Task 2 故事化（總經 ✅ + 個股 ✅ + 個股組合 ✅）/ Task 3 AI 解盤 ✅（各 tab 早已具備；個股 AI 再強化納入近半年新聞事件面，PR #53）。詳見 `SPEC.md §9`。
 
