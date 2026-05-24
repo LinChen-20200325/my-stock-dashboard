@@ -306,6 +306,8 @@ def render_chip_radar() -> None:
                         use_container_width=True, type='primary')
 
     _tk = ''.join(c for c in str(_typed) if c.isalnum())
+    if _go and not _tk:
+        st.warning('⚠️ 請先輸入股票代號（如 6770）再按「🔍 查詢籌碼」')
     if _go and _tk:
         st.session_state['_chip_radar_active'] = _tk
     _active = st.session_state.get('_chip_radar_active', '')

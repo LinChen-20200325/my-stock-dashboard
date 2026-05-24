@@ -114,6 +114,8 @@ def render_stock_grp():
     stock_list_t3 = parse_stocks(multi_input)[:10]
     if stock_list_t3:
         st.caption(f'待分析：{", ".join(stock_list_t3)}（共{len(stock_list_t3)}檔）')
+    elif t3_run_btn:
+        st.warning('⚠️ 請先在上方輸入至少一個有效股票代碼，再按「🚀 批次分析」')
 
     # ══ 批次分析邏輯 ════════════════════════════════════════════
     if t3_run_btn and stock_list_t3:
