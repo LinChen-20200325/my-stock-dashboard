@@ -1439,10 +1439,6 @@ with tab_stock:
     from chip_radar import render_chip_radar
     render_chip_radar()
 
-    # ── 🤖 AI 智能解盤（壓軸：整合本 tab 數據 + 近期新聞）──
-    from ai_summary import render_stock_ai_summary
-    render_stock_ai_summary(gemini_fn=gemini_call)
-
 
 with tab_stock_grp:
     render_stock_grp()
