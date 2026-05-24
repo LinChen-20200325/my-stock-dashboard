@@ -87,6 +87,13 @@ def render_etf_single(gemini_fn=None):
     c3.metric('Beta', f'{float(beta):.2f}' if beta else 'N/A')
     c4.metric('AUM', f'{aum/1e9:.1f}B USD' if aum and aum > 1e6 else 'N/A')
 
+    with st.expander('💡 這項數據代表什麼？（內扣費用率 · Beta · AUM）', expanded=False):
+        st.markdown(
+            '- **內扣費用率**：每年從資產裡自動扣的管理成本，**越低越好**（被動型多 <0.5%，主動型較高）；長期複利下 0.5% 差距很可觀。\n'
+            '- **Beta（β）**：相對大盤的波動敏感度。**β≈1** 與大盤同步；**β>1** 漲跌更兇（攻擊型）；**β<1** 較抗跌（防禦型）—— 配置時用來控整體風險。\n'
+            '- **AUM（基金規模）**：總管理資產。**太小（如 <10 億）有清算下市風險**；規模大則流動性好、買賣價差小。'
+        )
+
     # ── 自製品質評等（4 因子：AUM / 費用率 / 殖利率穩定度 / Beta）──
     try:
         from etf_quality import compute_etf_quality, render_quality_badge
