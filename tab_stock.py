@@ -2542,7 +2542,7 @@ padding:12px 16px;margin:8px 0;">
                 _ls.append(f'- `{_pb}` · {_head}　_{_src}_')
             return '\n'.join(_ls)
 
-        def _show_news_expander(_news):
+        def _show_news_expander(_news, _diag=None):
             _cnt = len(_news) if _news else 0
             with st.expander(f'📰 近半年相關新聞（{_cnt} 則 · Google News RSS · 近期為主）', expanded=bool(_news)):
                 st.caption('來源：Google News RSS（中英文，when:6m 偏近半年）。RSS 偏重近期，無法保證涵蓋完整半年；點標題開原文。')
@@ -2550,6 +2550,9 @@ padding:12px 16px;margin:8px 0;">
                     st.markdown(_fmt_news_list(_news))
                 else:
                     st.info('本次未取得個股新聞 — 可能 Google News RSS 暫時限流/封鎖（雲端海外 IP）或近期無相關報導；可稍後重試。')
+                    if _diag:
+                        st.caption('🔬 抓取診斷（proxy/直連 · HTTP · entries · 錯誤）：')
+                        st.code('\n'.join(_diag), language='text')
 
         _ai_sum_c1, _ai_sum_c2 = st.columns([3, 1])
         with _ai_sum_c1:
@@ -2690,9 +2693,11 @@ padding:12px 16px;margin:8px 0;">
                 f"宏觀跨資產背景：{_macro_extra2}"
             )
             # ── 抓取個股新聞（近半年，RSS 偏近期）──────────────────
-            _stock_news2 = _fetch_stock_news(sid2, name2, 25, recency='6m')
+            _news_diag2 = []
+            _stock_news2 = _fetch_stock_news(sid2, name2, 25, recency='6m', _diag=_news_diag2)
             st.session_state[_ai_sum_key + '_news'] = _stock_news2
-            _show_news_expander(_stock_news2)
+            st.session_state[_ai_sum_key + '_newsdiag'] = _news_diag2
+            _show_news_expander(_stock_news2, _news_diag2)
             _news_str2 = '\n'.join(
                 f'- {_n["title"]}（{_n.get("source","RSS")} · {_n.get("published","")}）'
                 for _n in _stock_news2
@@ -2810,7 +2815,7 @@ padding:12px 16px;margin:8px 0;">
         if _ai_sum_cached and not _do_ai_sum:
             _cached_news = st.session_state.get(_ai_sum_key + '_news')
             if _cached_news is not None:
-                _show_news_expander(_cached_news)
+                _show_news_expander(_cached_news, st.session_state.get(_ai_sum_key + '_newsdiag'))
             st.markdown(_ai_sum_cached)
         elif not _do_ai_sum:
             st.caption('▲ 點擊上方按鈕，AI 將綜合技術面、基本面、財報體檢、近半年新聞五大面向生成完整戰略評估報告。')

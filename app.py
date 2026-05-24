@@ -1295,41 +1295,53 @@ def _fetch_macro_news(n: int = 5) -> list:
     return _out[:n]
 
 
-def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5, recency: str = "") -> list:
+def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5, recency: str = "", _diag=None) -> list:
     """抓取個股相關新聞（Google News RSS 中英文雙搜尋）。失敗時回傳空串列。
     透過 NAS Squid proxy 路由（Streamlit Cloud IP 易被 Google News RSS 限速/封鎖）。
     recency：Google News 時間運算子（如 '6m' 近半年 / '7d'），空字串=不限。
     每則含 link 與排序用 _ts，並依發布時間新→舊排序。
+    _diag：傳入 list 時逐 feed 記錄抓取狀態（proxy/直連 · HTTP · entries · 錯誤）供 UI 診斷。
     """
     try:
         import feedparser as _fp
         import html as _h
         import re as _re2
         import time as _time_sn
+        from urllib.parse import quote as _uq
     except ImportError:
+        if _diag is not None:
+            _diag.append('feedparser/urllib 匯入失敗')
         return []
     try:
         from proxy_helper import fetch_url as _furl_sn
     except ImportError:
         _furl_sn = None
+        if _diag is not None:
+            _diag.append('proxy_helper 未載入 → 僅能直連（雲端易 403）')
     _rec = f" when:{recency}" if recency else ""
     _q_tw = f"{stock_id} {stock_name}{_rec}".strip()
     _q_en = f"Taiwan stock {stock_id} {stock_name}{_rec}".strip()
     _feeds = [
-        ('Google新聞(中文)', f'https://news.google.com/rss/search?q={_q_tw}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant'),
-        ('Google新聞(英文)', f'https://news.google.com/rss/search?q={_q_en}&hl=en-US&gl=US&ceid=US:en'),
+        ('Google新聞(中文)', f'https://news.google.com/rss/search?q={_uq(_q_tw)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant'),
+        ('Google新聞(英文)', f'https://news.google.com/rss/search?q={_uq(_q_en)}&hl=en-US&gl=US&ceid=US:en'),
     ]
     _out = []
     for _src, _url in _feeds:
+        _via = ''
         try:
             _fd = None
             if _furl_sn is not None:
                 _r_sn = _furl_sn(_url, timeout=10)
                 if _r_sn is not None:
+                    _st = getattr(_r_sn, 'status_code', '?')
                     _sn_txt = _r_sn.text if hasattr(_r_sn, 'text') else _r_sn.content.decode('utf-8', 'ignore')
                     _fd = _fp.parse(_sn_txt)
+                    _via = f'proxy HTTP {_st}/{len(getattr(_fd, "entries", []))}則'
+                else:
+                    _via = 'proxy回None'
             if _fd is None or not getattr(_fd, 'entries', None):
                 _fd = _fp.parse(_url)
+                _via += f' →直連{len(getattr(_fd, "entries", []))}則'
             for _e in _fd.entries:
                 _title = _h.unescape(_e.get('title', '')).strip()
                 _summ  = _h.unescape(_e.get('summary', _e.get('description', ''))).strip()
@@ -1342,8 +1354,12 @@ def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5, recency: 
                                  'published': _pub, 'link': _e.get('link', ''), '_ts': _ts})
                 if len(_out) >= n:
                     break
+            if _diag is not None:
+                _diag.append(f'{_src}: {_via} → 收 {len(_out)} 則')
             print(f'[StockNews/{_src}] ✅ {stock_id} 累計 {len(_out)} 則')
         except Exception as _ne:
+            if _diag is not None:
+                _diag.append(f'{_src}: ❌ {_via} {type(_ne).__name__}: {str(_ne)[:80]}')
             print(f'[StockNews/{_src}] ❌ {_ne}')
         if len(_out) >= n:
             break
