@@ -3862,6 +3862,19 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     _ctx.append(f'• 外資期貨淨口數：{_fut_net_v:+.0f}口（負=淨空單、<-35000強烈空頭信號）')
                 if _vix_d.get('current'):
                     _ctx.append(f'• VIX 恐慌指數：{_vix_d["current"]}（>28警戒、>35極度恐慌）')
+                _ndc_v = locals().get('_m8_ndc')
+                if _ndc_v and _ndc_v.get('score') is not None:
+                    _ctx.append(f'• NDC 景氣對策信號：{float(_ndc_v["score"]):.0f}分（9-16藍燈衰退 / 23-31綠燈穩定 / 38-45紅燈過熱）')
+                if _pmi_cur is not None:
+                    _ctx.append(f'• 台灣 PMI / 景氣領先：{_pmi_cur}（>50擴張、<50收縮、<48製造業衰退）')
+                if _exp_d.get('yoy') is not None:
+                    _ctx.append(f'• 台灣外銷訂單 YoY：{_exp_d["yoy"]:+.1f}%（科技出口景氣領先）')
+                if _cpi_d.get('yoy') is not None:
+                    _ctx.append(f'• 美國核心 CPI YoY：{_cpi_d["yoy"]:+.1f}%（>3% 升息壓力、壓抑高 PE 成長股估值）')
+                _sox_v = locals().get('_ai_sox') or 0
+                _nvda_v = locals().get('_ai_nvda') or 0
+                if _sox_v or _nvda_v:
+                    _ctx.append(f'• 美股科技動能：費半 SOX={_sox_v:+.1f}% / NVDA={_nvda_v:+.1f}%（領先台股科技權值股 2-4 週）')
                 _v_macro_ctx = '\n'.join(_ctx) if _ctx else '（數據尚未載入，請先更新總經拼圖）'
                 _locker = MacroStateLocker()
                 _locker.lock_system_state_only(_system_state)
