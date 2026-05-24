@@ -72,6 +72,10 @@ def _build_dynamic_name_cache() -> dict:
     回傳 {股票代碼: 中文名稱} dict。"""
     HDR = {'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'}
     result = {}
+    try:
+        from proxy_helper import fetch_url as _furl_sn  # 強制走 NAS proxy（雲端直連 TWSE/TPEx 易 403）
+    except ImportError:
+        _furl_sn = None
 
     # 1. TWSE 上市（含ETF）
     _twse_urls = [
@@ -80,8 +84,8 @@ def _build_dynamic_name_cache() -> dict:
     ]
     for _url in _twse_urls:
         try:
-            r = requests.get(_url, headers=HDR, timeout=12)
-            if r.status_code == 200:
+            r = _furl_sn(_url, headers=HDR, timeout=12) if _furl_sn else requests.get(_url, headers=HDR, timeout=12)
+            if r is not None and r.status_code == 200:
                 data = r.json()
                 if isinstance(data, list):
                     for item in data:
@@ -97,10 +101,9 @@ def _build_dynamic_name_cache() -> dict:
 
     # 2. TPEx 上櫃
     try:
-        r2 = requests.get(
-            'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes',
-            headers=HDR, timeout=12)
-        if r2.status_code == 200:
+        _tpex_url = 'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes'
+        r2 = _furl_sn(_tpex_url, headers=HDR, timeout=12) if _furl_sn else requests.get(_tpex_url, headers=HDR, timeout=12)
+        if r2 is not None and r2.status_code == 200:
             data2 = r2.json()
             if isinstance(data2, list):
                 before = len(result)
