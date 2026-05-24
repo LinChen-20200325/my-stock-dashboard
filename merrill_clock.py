@@ -226,6 +226,20 @@ def render_merrill_clock(pmi_now: float | None, cpi_yoy: float | None):
                  f"{_state['phase']}</span>　"
                  f"<span style='color:#8b949e;font-size:12px'>建議重點：{_state['asset_keynote']}</span>",
                  unsafe_allow_html=True)
+    with _st.expander('💡 美林時鐘怎麼看？（景氣四象限 × 資產輪動）', expanded=False):
+        _st.markdown(
+            '美林投資時鐘用兩個軸把景氣分成四階段，**不同階段該重押不同資產**：\n\n'
+            '- **橫軸＝景氣動能（PMI YoY 變化）**：右邊＝景氣加速、左邊＝放緩。\n'
+            '- **縱軸＝通膨（CPI YoY）**：上面＝通膨升、下面＝通膨降。\n\n'
+            '| 象限 | 情境 | 偏強資產 |\n'
+            '|---|---|---|\n'
+            '| 🟢 復甦（動能↑·通膨↓）| 景氣回溫、利率仍低 | **股票（成長/科技）** |\n'
+            '| 🔴 過熱（動能↑·通膨↑）| 景氣旺但通膨燙 | 原物料、能源、抗通膨 |\n'
+            '| 🟠 停滯（動能↓·通膨↑）| 景氣降溫但物價高 | 現金、短債（防禦）|\n'
+            '| 🔵 衰退（動能↓·通膨↓）| 景氣與物價齊跌 | **債券（長天期）** |\n\n'
+            '🎯 用法：先看圓點落在哪一象限 → 對照下方資產配置表加減碼；'
+            '再搭配 NDC 景氣燈號與旌旗指數綜合判斷，避免單一指標誤判。'
+        )
     _fig = _build_quadrant_fig(_pmi_chg, float(cpi_yoy), _state)
     _st.plotly_chart(_fig, use_container_width=True)
     # 資產配置表
