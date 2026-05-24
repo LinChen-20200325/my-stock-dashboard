@@ -1249,6 +1249,38 @@ def _fetch_macro_news(n: int = 5) -> list:
     return _out[:n]
 
 
+def _rss_items_from_bytes(_content) -> list:
+    """從 RSS bytes 抽 item：feedparser 主、ElementTree 備援（規避 feedparser 對
+    含 encoding 宣告 / 特殊命名空間 RSS 的怪癖）。回傳 dict list。"""
+    if not _content:
+        return []
+    _cb = _content if isinstance(_content, bytes) else str(_content).encode('utf-8', 'ignore')
+    try:
+        import feedparser as _fp2
+        _e = list(getattr(_fp2.parse(_cb), 'entries', []) or [])
+        if _e:
+            return _e
+    except Exception:
+        pass
+    if b'<item' not in _cb:
+        return []
+    try:
+        import xml.etree.ElementTree as _ET
+        import email.utils as _eu
+        _items = []
+        for _it in _ET.fromstring(_cb).iter('item'):
+            _title = (_it.findtext('title') or '').strip()
+            if not _title:
+                continue
+            _pub = (_it.findtext('pubDate') or '').strip()
+            _items.append({'title': _title, 'link': (_it.findtext('link') or '').strip(),
+                           'summary': (_it.findtext('description') or '').strip(),
+                           'published': _pub, 'published_parsed': _eu.parsedate(_pub) if _pub else None})
+        return _items
+    except Exception:
+        return []
+
+
 def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5, recency: str = "", _diag=None) -> list:
     """抓取個股相關新聞（Google News RSS 中英文雙搜尋）。失敗時回傳空串列。
     透過 NAS Squid proxy 路由（Streamlit Cloud IP 易被 Google News RSS 限速/封鎖）。
@@ -1273,55 +1305,61 @@ def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5, recency: 
         _nas_rf = None
         if _diag is not None:
             _diag.append('proxy_helper 未載入 → 僅能直連（雲端易 403）')
-    _rec = f" when:{recency}" if recency else ""
-    _q_tw = f"{stock_id} {stock_name}{_rec}".strip()
-    _q_en = f"Taiwan stock {stock_id} {stock_name}{_rec}".strip()
+    # 不用 Google News `when:` 運算子（RSS 不穩、常回空 channel）；改吃預設近期排序
+    _q_tw = f"{stock_id} {stock_name}".strip()
+    _q_en = f"Taiwan stock {stock_id} {stock_name}".strip()
     _feeds = [
         ('Google新聞(中文)', f'https://news.google.com/rss/search?q={_uq(_q_tw)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant'),
         ('Google新聞(英文)', f'https://news.google.com/rss/search?q={_uq(_q_en)}&hl=en-US&gl=US&ceid=US:en'),
     ]
-    # 繞過 Google 同意頁攔截（會回 HTTP 200 卻是 consent HTML 而非 RSS → feedparser 0 則）
     _news_hdr = {
-        'Cookie': 'CONSENT=YES+cb; SOCS=CAI',
+        'Cookie': 'CONSENT=YES+cb; SOCS=CAI',  # 繞過 Google 同意頁（保險）
         'Accept': 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5',
     }
     _out = []
     for _src, _url in _feeds:
         _via = ''
+        _content = None
         try:
-            _fd = None
-            # 路徑①：NAS FastAPI 中繼站（家用台灣 IP server-side 代抓，最不易被 Google 403）
+            # 路徑①：NAS FastAPI 中繼站（家用台灣 IP）
             if _nas_rf is not None:
-                _r_relay = _nas_rf(_url, timeout=15)
-                if _r_relay is not None:
-                    _fd = _fp.parse(_r_relay.content)  # 餵 bytes（見下）
-                    _via = f'NAS中繼 HTTP {getattr(_r_relay, "status_code", "?")}/{len(getattr(_fd, "entries", []))}則'
+                _rr = _nas_rf(_url, timeout=15)
+                if _rr is not None:
+                    _content = _rr.content
+                    _via = f'NAS中繼 HTTP {getattr(_rr, "status_code", "?")}'
                 else:
                     _via = 'NAS中繼未設定或失敗'
-            # 路徑②：Squid proxy（CONNECT 隧道，會自動降級直連）
-            if (_fd is None or not getattr(_fd, 'entries', None)) and _furl_sn is not None:
-                _r_sn = _furl_sn(_url, headers=_news_hdr, timeout=10)
-                if _r_sn is not None:
-                    _st = getattr(_r_sn, 'status_code', '?')
-                    # 餵 bytes：RSS body 含 encoding="UTF-8" 宣告時，餵 str 會被 feedparser 拒解析→0則
-                    _fd = _fp.parse(_r_sn.content)
-                    _ne2 = len(getattr(_fd, 'entries', []))
-                    _via += f' | Squid HTTP {_st}/{_ne2}則'
-                    if _ne2 == 0:
-                        _via += f'｜body[:120]={_r_sn.content[:120].decode("utf-8", "ignore").strip()!r}'
+            # 路徑②：Squid proxy
+            if not _content and _furl_sn is not None:
+                _rs = _furl_sn(_url, headers=_news_hdr, timeout=10)
+                if _rs is not None:
+                    _content = _rs.content
+                    _via += f' | Squid HTTP {getattr(_rs, "status_code", "?")}'
                 else:
                     _via += ' | Squid回None'
-            # 路徑③：直連（雲端機房 IP 多為 403，最後手段）
-            if _fd is None or not getattr(_fd, 'entries', None):
-                _fd = _fp.parse(_url, request_headers=_news_hdr)
-                _via += f' | 直連{len(getattr(_fd, "entries", []))}則'
-            for _e in _fd.entries:
+            # 解析：feedparser → ElementTree 備援（餵 bytes）
+            _items = _rss_items_from_bytes(_content)
+            # 路徑③：直連（前兩路徑都沒 item 才試；雲端機房 IP 多 403）
+            if not _items:
+                try:
+                    _items = list(getattr(_fp.parse(_url, request_headers=_news_hdr), 'entries', []) or [])
+                    _via += f' | 直連{len(_items)}則'
+                except Exception:
+                    _via += ' | 直連失敗'
+            _itag = _content.count(b'<item') if _content else 0
+            _via += f'｜item標籤={_itag}/解析{len(_items)}則'
+            if not _items and _content:
+                _via += f'｜body[:100]={_content[:100].decode("utf-8", "ignore").strip()!r}'
+            for _e in _items:
                 _title = _h.unescape(_e.get('title', '')).strip()
                 _summ  = _h.unescape(_e.get('summary', _e.get('description', ''))).strip()
                 _summ  = _re2.sub(r'<[^>]+>', '', _summ)[:150].strip()
                 _pub   = str(_e.get('published', ''))[:16]
                 _pp    = _e.get('published_parsed')
-                _ts    = _time_sn.mktime(_pp) if _pp else 0.0
+                try:
+                    _ts = _time_sn.mktime(_pp) if _pp else 0.0
+                except Exception:
+                    _ts = 0.0
                 if _title:
                     _out.append({'title': _title, 'summary': _summ, 'source': _src,
                                  'published': _pub, 'link': _e.get('link', ''), '_ts': _ts})
