@@ -2543,11 +2543,13 @@ padding:12px 16px;margin:8px 0;">
             return '\n'.join(_ls)
 
         def _show_news_expander(_news):
-            if not _news:
-                return
-            with st.expander(f'📰 近半年相關新聞（{len(_news)} 則 · Google News RSS · 近期為主）', expanded=False):
+            _cnt = len(_news) if _news else 0
+            with st.expander(f'📰 近半年相關新聞（{_cnt} 則 · Google News RSS · 近期為主）', expanded=bool(_news)):
                 st.caption('來源：Google News RSS（中英文，when:6m 偏近半年）。RSS 偏重近期，無法保證涵蓋完整半年；點標題開原文。')
-                st.markdown(_fmt_news_list(_news))
+                if _news:
+                    st.markdown(_fmt_news_list(_news))
+                else:
+                    st.info('本次未取得個股新聞 — 可能 Google News RSS 暫時限流/封鎖（雲端海外 IP）或近期無相關報導；可稍後重試。')
 
         _ai_sum_c1, _ai_sum_c2 = st.columns([3, 1])
         with _ai_sum_c1:
@@ -2772,7 +2774,9 @@ padding:12px 16px;margin:8px 0;">
             st.session_state[_ai_sum_key] = _ai_sum_result
 
         if _ai_sum_cached and not _do_ai_sum:
-            _show_news_expander(st.session_state.get(_ai_sum_key + '_news', []))
+            _cached_news = st.session_state.get(_ai_sum_key + '_news')
+            if _cached_news is not None:
+                _show_news_expander(_cached_news)
             st.markdown(_ai_sum_cached)
         elif not _do_ai_sum:
             st.caption('▲ 點擊上方按鈕，AI 將綜合技術面、基本面、財報體檢、近半年新聞五大面向生成完整戰略評估報告。')
