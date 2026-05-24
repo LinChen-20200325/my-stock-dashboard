@@ -882,7 +882,7 @@ with st.sidebar:
             _sb_sid_cur = str(st.session_state.get('portfolio_sheet_id', '') or '').strip()
             _sb_sid_raw = st.text_input(
                 'Google Sheet ID 或完整 URL（系統會自動解析 ID）',
-                value=_sb_sid_cur, key='etf_p_sheet_id_input',
+                value=_sb_sid_cur, key='sb_portfolio_sheet_id_input',
                 placeholder='貼上 https://docs.google.com/spreadsheets/d/...',
                 help='貼 URL/ID 設定投組資料庫；或到「ETF 組合」Tab 從 Drive 挑選 / 一鍵新建')
             _sb_m = re.search(r'/spreadsheets/d/([a-zA-Z0-9_-]+)', _sb_sid_raw)

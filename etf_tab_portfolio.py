@@ -890,7 +890,7 @@ def _render_oauth_panel(_gsp) -> bool:
                           type='primary', use_container_width=True):
                 _picked = _my_sheets[_sel_idx]
                 st.session_state['portfolio_sheet_id'] = _picked['id']
-                st.session_state.pop('etf_p_sheet_id_input', None)
+                st.session_state.pop('sb_portfolio_sheet_id_input', None)
                 st.success(f"✅ 已選用 `{_picked['name']}`")
                 st.rerun()
         elif st.session_state.get('_etf_p_list_tried'):
@@ -915,7 +915,7 @@ def _render_oauth_panel(_gsp) -> bool:
                 st.error(f'❌ 建立失敗：{_ce}')
             else:
                 st.session_state['portfolio_sheet_id'] = _new_id
-                st.session_state.pop('etf_p_sheet_id_input', None)
+                st.session_state.pop('sb_portfolio_sheet_id_input', None)
                 st.session_state.pop('_etf_p_my_sheets', None)
                 st.success(f'✅ 已建立並選用「{_new_title}」 — [打開 Sheet]({_new_url})')
                 st.rerun()
