@@ -768,9 +768,12 @@ def _generate_ai_report(gemini_fn, qualified: list[dict], all_results: list[dict
     for r in qualified:
         _lines.append(
             f'- **{r["ticker"]} {r.get("note","")}**：'
-            f'S1=`{r["s1_pass_cnt"]}/4`（債{r["debt_ratio_label"]} · 三率{r["three_rate_label"]} '
-            f'· 5Y配息{r["div_5y_label"]} · PE{r["pe_zone_label"]}）'
-            f' / S2=`{r["s2_pass_cnt"]}/3`（MA20{r["ma20_label"]} · MACD{r["macd_label"]} · KD{r["kd_label"]}）'
+            f'S1=`{r["s1_pass_cnt"]}/9`（債{r.get("debt_ratio_label","?")} · 三率{r.get("three_rate_label","?")} '
+            f'· 5Y配息{r.get("div_5y_label","?")} · PE{r.get("pe_zone_label","?")} · 應收{r.get("ar_turnover_label","?")} '
+            f'· 存貨{r.get("inv_turnover_label","?")} · 資支{r.get("capex_label","?")} · 淨值{r.get("book_value_label","?")} '
+            f'· 合約負債{r.get("contract_liab_label","?")}）'
+            f' / S2=`{r["s2_pass_cnt"]}/6`（MA20{r.get("ma20_label","?")} · MACD{r.get("macd_label","?")} '
+            f'· KD{r.get("kd_label","?")} · 布林{r.get("boll_label","?")} · 投信{r.get("inst_label","?")} · 大戶{r.get("major_label","?")}）'
         )
     _prompt = (
         '你是一位擁有 20 年台股經驗的「台股AI戰情室」首席策略師。'
