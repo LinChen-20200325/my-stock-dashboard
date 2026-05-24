@@ -12,6 +12,39 @@ from __future__ import annotations
 import streamlit as st
 
 
+# #U7：單值總經指標若 identifier 為 FRED series id → 可抓歷史序列畫 sparkline
+_FRED_EDU_UNITS = {'CPILFESL': 'pc1', 'VALEXPTWM052N': 'pc1', 'NAPM': 'lin'}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _fetch_fred_series_edu(series_id: str, units: str = 'lin', months: int = 24):
+    """抓 FRED 指標近 N 月歷史序列（教學 tab sparkline 用）；units=pc1 取 YoY%。失敗回 None。"""
+    try:
+        import os as _o
+        import pandas as _pd
+        from proxy_helper import fetch_url as _fu
+        _key = (_o.environ.get('FRED_API_KEY')
+                or (st.secrets.get('FRED_API_KEY') if hasattr(st, 'secrets') else '') or '')
+        if not _key:
+            return None
+        _r = _fu('https://api.stlouisfed.org/fred/series/observations',
+                 params={'series_id': series_id, 'api_key': _key, 'file_type': 'json',
+                         'units': units, 'sort_order': 'desc', 'limit': months},
+                 timeout=12, attempts=1)
+        if _r is None or getattr(_r, 'status_code', 0) != 200:
+            return None
+        _pairs = [(_ob['date'], float(_ob['value']))
+                  for _ob in _r.json().get('observations', [])
+                  if _ob.get('value') not in ('.', '', None)]
+        if len(_pairs) < 3:
+            return None
+        _pairs.sort(key=lambda x: x[0])
+        return _pd.Series([v for _, v in _pairs],
+                          index=_pd.to_datetime([d for d, _ in _pairs]))
+    except Exception:
+        return None
+
+
 def render_tab_edu():
     st.markdown('## 📚 台股 AI 戰情室 — 策略邏輯說明書')
     st.caption('整理自各大師公開課程，僅供學術研究。投資涉及風險，本系統不構成買賣建議，盈虧自負。')
@@ -89,6 +122,12 @@ def render_tab_edu():
                 }
                 if identifier in _single:
                     _v, _tw, _tc, _hib = _single[identifier]
+                    _funits = _FRED_EDU_UNITS.get(identifier)
+                    if _funits is not None:
+                        _ser = _fetch_fred_series_edu(identifier, _funits)
+                        if _ser is not None and len(_ser) >= 3:
+                            return ((_v if _v is not None else float(_ser.iloc[-1])),
+                                    _ser, _tw, _tc, _hib)
                     return _v, None, _tw, _tc, _hib
 
                 # ─ 其他（暫無資料，後續 PR 處理）─
