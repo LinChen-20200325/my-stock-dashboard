@@ -150,6 +150,8 @@ def _generate_report(gemini_fn, port_d, backtest_d, regime, MACRO_ALLOC,
         if _nn and _nn != '（暫無相關新聞）':
             _news_lines.append(f'[{_tk}]\n{_nn}')
     _news_str = '\n\n'.join(_news_lines) if _news_lines else '（暫無相關新聞）'
+    _overlap_str = st.session_state.get('etf_overlap_summary', '（未計算 — 請先在「組合配置」頁檢視持股重疊）')
+    _weak_str = st.session_state.get('etf_weakness_summary', '（未計算 — 請先在「組合配置」頁跑主動 ETF 弱勢度檢測）')
 
     # ── 組裝 Markdown prompt（對齊總經 AI 風格）───────────────
     prompt = (
@@ -187,6 +189,10 @@ def _generate_report(gemini_fn, port_d, backtest_d, regime, MACRO_ALLOC,
         f'### 【再平衡指令】\n{_rebal_str}\n\n'
 
         f'### 【回測績效】\n{_bt_str}\n\n'
+
+        f'### 【持股重疊 Overlap（同質性=重複押注風險）】\n{_overlap_str}\n\n'
+
+        f'### 【主動 ETF 弱勢度 / 換股訊號】\n{_weak_str}\n\n'
 
         f'### 【近期 ETF 新聞】\n{_news_str}\n\n'
 

@@ -480,6 +480,10 @@ def render_etf_portfolio(gemini_fn=None):
         else:
             st.success(f'✅ 任兩檔 ETF 持股 {"權重重疊" if _method_key == "weight" else "Jaccard 重疊"} '
                        f'皆 < {_threshold:.0f}%，組合分散度健康。')
+        import re as _re_ov
+        _ov_clean = [_re_ov.sub('<[^>]+>', '', _w).replace('⚠️', '').strip() for _w in _warn_lines]
+        st.session_state['etf_overlap_summary'] = ('；'.join(_ov_clean) if _ov_clean
+                                                   else f'任兩檔持股重疊皆 <{_threshold:.0f}%，分散度健康')
     elif _valid_count == 1:
         st.info('⚪ 僅 1 檔 ETF 抓到成份股，無法兩兩比對。')
     else:
@@ -514,6 +518,9 @@ def render_etf_portfolio(gemini_fn=None):
                     f'(任期 {_r["任期"]}){_mgr_note}'
                 )
             _colored_box('<br>'.join(_lines), 'red')
+        st.session_state['etf_weakness_summary'] = ('；'.join(
+            f'{_r["代號"]} 連{_r.get("連敗季數", 0)}季輸{_r.get("benchmark", "大盤")}(建議換被動式)'
+            for _r in _switch_targets) if _switch_targets else '無主動式 ETF 連 2 季輸盤')
 
     # ── 壓力測試（S&P500 下跌20%）────────────────────────────
     st.markdown('#### 🧨 壓力測試（模擬 S&P 500 下跌 20%）')
