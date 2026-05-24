@@ -1326,6 +1326,11 @@ def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5, recency: 
         ('Google新聞(中文)', f'https://news.google.com/rss/search?q={_uq(_q_tw)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant'),
         ('Google新聞(英文)', f'https://news.google.com/rss/search?q={_uq(_q_en)}&hl=en-US&gl=US&ceid=US:en'),
     ]
+    # 繞過 Google 同意頁攔截（會回 HTTP 200 卻是 consent HTML 而非 RSS → feedparser 0 則）
+    _news_hdr = {
+        'Cookie': 'CONSENT=YES+cb; SOCS=CAI',
+        'Accept': 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5',
+    }
     _out = []
     for _src, _url in _feeds:
         _via = ''
@@ -1342,17 +1347,20 @@ def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5, recency: 
                     _via = 'NAS中繼未設定或失敗'
             # 路徑②：Squid proxy（CONNECT 隧道，會自動降級直連）
             if (_fd is None or not getattr(_fd, 'entries', None)) and _furl_sn is not None:
-                _r_sn = _furl_sn(_url, timeout=10)
+                _r_sn = _furl_sn(_url, headers=_news_hdr, timeout=10)
                 if _r_sn is not None:
                     _st = getattr(_r_sn, 'status_code', '?')
                     _sn_txt = _r_sn.text if hasattr(_r_sn, 'text') else _r_sn.content.decode('utf-8', 'ignore')
                     _fd = _fp.parse(_sn_txt)
-                    _via += f' | Squid HTTP {_st}/{len(getattr(_fd, "entries", []))}則'
+                    _ne2 = len(getattr(_fd, 'entries', []))
+                    _via += f' | Squid HTTP {_st}/{_ne2}則'
+                    if _ne2 == 0:
+                        _via += f'｜body[:120]={_sn_txt[:120].strip()!r}'
                 else:
                     _via += ' | Squid回None'
             # 路徑③：直連（雲端機房 IP 多為 403，最後手段）
             if _fd is None or not getattr(_fd, 'entries', None):
-                _fd = _fp.parse(_url)
+                _fd = _fp.parse(_url, request_headers=_news_hdr)
                 _via += f' | 直連{len(getattr(_fd, "entries", []))}則'
             for _e in _fd.entries:
                 _title = _h.unescape(_e.get('title', '')).strip()
