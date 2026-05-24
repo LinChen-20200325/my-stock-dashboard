@@ -480,6 +480,7 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
         with col_left:
             st.markdown('##### ③ 多因子評分排行')
             st.caption('趨勢×0.30 + 動能×0.25 + 籌碼×0.20 + 量價×0.15 + 風險×0.10')
+            st.caption('🔰 另三欄基本面白話：SQ品質分＝獲利品質（賺得乾不乾淨）、FGMS前瞻＝前瞻成長動能（未來成長力道），皆 0~100 越高越好；EPS／毛利率／殖利率為對照。')
             # 動態：找出最高分與門檻達標數
             _top_score_r = max(score_t3, key=lambda r: r.get('total', 0)) if score_t3 else None
             _pass70 = [r for r in score_t3 if r.get('total', 0) >= 70]
@@ -609,6 +610,8 @@ border-radius:10px;padding:12px;text-align:center;margin:2px 0;">
     if _fh_t3_cached:
         # ── 摘要比較表 ────────────────────────────────────────────
         st.markdown('##### 📊 體檢摘要比較表')
+        st.caption('🔰 欄位白話（MJ 策略2）：現金水位＝現金佔總資產（>25%佳）；OCF＝營業現金流（須為正，否則「黑字破產」）；'
+                   '負債比＝欠錢比例（<60%穩）；企業DNA＝商業模式類型；雷達均分＝五力體質平均（越高越好）。')
         _fh_rows = []
         for _sid_f, _fd_f in _fh_t3_cached.items():
             _scores_f = _fd_f.get('radar_scores', {})
