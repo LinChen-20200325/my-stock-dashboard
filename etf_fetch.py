@@ -34,11 +34,11 @@ def _fetch_news_for(ticker: str, name: str = "", n: int = 4) -> str:
             if _nasf is not None:
                 _rr = _nasf(_url, timeout=15)
                 if _rr is not None:
-                    _fd = _fp.parse(_rr.text)
+                    _fd = _fp.parse(_rr.content)  # 餵 bytes（避免 str+encoding 宣告被拒解析）
             if (_fd is None or not getattr(_fd, 'entries', None)) and _furl is not None:
                 _rs = _furl(_url, headers=_hdr, timeout=10)
                 if _rs is not None:
-                    _fd = _fp.parse(_rs.text)
+                    _fd = _fp.parse(_rs.content)
             if _fd is None or not getattr(_fd, 'entries', None):
                 _fd = _fp.parse(_url, request_headers=_hdr)
             for _e in _fd.entries:
