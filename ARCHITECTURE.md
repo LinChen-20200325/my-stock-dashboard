@@ -463,6 +463,7 @@ app.py      ✓    ✓    ✓    ✓    ✓    ✓
 - **集保籌碼整合**：`chip_radar.render_chip_radar(sid2)` 由個股主代碼驅動、置於「AI 首席顧問總結」上方，回傳摘要注入 AI prompt 籌碼段（PR #45）。
 - **總經判斷單一真相**：總經 ③「今日行動建議」結論/色彩/持股統一以紅綠燈（`_tl_eff_reg` + `market_regime.exposure_pct`）為準，v4 降為補充；⑩ 快照不一致時提醒（PR #42）。
 - **故事化白話層**：個股/總經新增 `st.expander`/`st.caption` 白話導讀，零更動計算邏輯（PR #37/#40/#41/#43/#46/#47）。
+- **個股 AI 納入半年新聞**：`_fetch_stock_news` 加 `recency='6m'` + `link` + 依發布時間排序；個股「AI 首席顧問總結」新聞 5→25 則 + 可摺疊「📰 近半年相關新聞」清單（隨快取報告顯示）+ prompt 加「步驟六 新聞事件面」與深度解析新聞 bullet（PR #53）。
 
 ---
 

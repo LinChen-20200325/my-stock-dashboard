@@ -323,3 +323,9 @@ PR #5 既有 5 個 API（`is_configured` / `list_portfolios` / `load_portfolio` 
 - **不重複既有白話**（總經 `beginner_kpi`/`teacher_conclusion`、個股白話問句標題等已白話處不再加）。
 - Streamlit **不可巢狀 expander** → 白話 expander 須置於既有 expander 之外（個股財報名詞快查即放在「策略2」expander 外）。
 - v5.0 Task 3（每 tab AI 解盤）盤點後確認**各重點 tab 早已有 AI**（總經/個股/組合/智慧選股/ETF），不另加通用模組（PR #38 誤加個股第二個 AI 已 #39 撤回）。
+
+### §9.5 個股 AI 總結納入近半年新聞（PR #53）
+`app._fetch_stock_news(stock_id, stock_name, n, recency)`：新增 `recency`（Google News `when:6m` 偏近半年）、每則加 `link`、依 `published_parsed` 新→舊排序（向後相容，舊呼叫端不受影響）。
+- `tab_stock`「🤖 AI 首席顧問總結」：新聞 5→25 則（`recency='6m'`）；新增可摺疊「📰 近半年相關新聞」清單（日期＋可點標題＋來源；存 `session_state[_ai_sum_key+'_news']`，隨快取報告一併顯示）。
+- Prompt 強化：【近期相關新聞】→【近半年相關新聞】；【分析指令】加「步驟六：新聞事件面」（歸納利多催化劑 / 利空風險事件，並與技術籌碼訊號交叉印證或背離）；【輸出格式】三、深度解析加「新聞事件面」bullet。五維雷達結構不變（新聞為事件面補充，非第六軸）。
+- **限制**：免費 Google News RSS 偏近期，無法保證涵蓋完整半年，介面已誠實標示「近期為主」。

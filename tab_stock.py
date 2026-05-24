@@ -2528,6 +2528,27 @@ padding:12px 16px;margin:8px 0;">
 
         _ai_sum_key = f'_ai_sum_{sid2}'
         _ai_sum_cached = st.session_state.get(_ai_sum_key, '')
+
+        def _fmt_news_list(_news):
+            if not _news:
+                return '（暫無相關個股新聞）'
+            _ls = []
+            for _nn in _news:
+                _t = _nn.get('title', '')
+                _lk = _nn.get('link', '')
+                _src = _nn.get('source', 'RSS')
+                _pb = _nn.get('published', '') or '—'
+                _head = f'[{_t}]({_lk})' if _lk else _t
+                _ls.append(f'- `{_pb}` · {_head}　_{_src}_')
+            return '\n'.join(_ls)
+
+        def _show_news_expander(_news):
+            if not _news:
+                return
+            with st.expander(f'📰 近半年相關新聞（{len(_news)} 則 · Google News RSS · 近期為主）', expanded=False):
+                st.caption('來源：Google News RSS（中英文，when:6m 偏近半年）。RSS 偏重近期，無法保證涵蓋完整半年；點標題開原文。')
+                st.markdown(_fmt_news_list(_news))
+
         _ai_sum_c1, _ai_sum_c2 = st.columns([3, 1])
         with _ai_sum_c1:
             _do_ai_sum = st.button('🤖 生成 AI 首席顧問戰略評估報告', key='btn_ai_sum2', type='primary')
@@ -2666,8 +2687,10 @@ padding:12px 16px;margin:8px 0;">
                 f"建議持股={_mkt_info2.get('exposure_limit_pct', st.session_state.get('macro_state',{}).get('exposure_limit_pct','N/A'))}%\n"
                 f"宏觀跨資產背景：{_macro_extra2}"
             )
-            # ── 抓取個股新聞 ──────────────────────────────────────
-            _stock_news2 = _fetch_stock_news(sid2, name2, 5)
+            # ── 抓取個股新聞（近半年，RSS 偏近期）──────────────────
+            _stock_news2 = _fetch_stock_news(sid2, name2, 25, recency='6m')
+            st.session_state[_ai_sum_key + '_news'] = _stock_news2
+            _show_news_expander(_stock_news2)
             _news_str2 = '\n'.join(
                 f'- {_n["title"]}（{_n.get("source","RSS")} · {_n.get("published","")}）'
                 for _n in _stock_news2
@@ -2690,7 +2713,7 @@ padding:12px 16px;margin:8px 0;">
 【財報體檢（MJ林明樟體系）】
 {_health_check_str2}
 
-【近期相關新聞】（RSS 即時，供輔助研判，不作為唯一依據）
+【近半年相關新聞】（Google News RSS，近期為主，供事件面輔助研判，不作為唯一依據）
 {_news_str2}
 
 【總體經濟背景】
@@ -2703,6 +2726,7 @@ padding:12px 16px;margin:8px 0;">
 步驟三：財報體檢整合 - 綜合 MJ林明樟體系（企業DNA / 五力雷達 / OPM話語權 / 地雷警示）評判財務健康度與資金流向型態。
 步驟四：估值定位 - 結合357估值區間判斷目前股價是否在合理買進區。
 步驟五：風險量化與宏觀交叉驗證 - 利用ATR計算動態波動區間；並必須引用「宏觀跨資產背景」中的 VIX / 美核心CPI / 🇹🇼 台灣 PMI / 美10Y / 費半 SOX 至少 2 項，說明對個股估值與外資籌碼的影響（例：「台灣 PMI < 48 → 製造業衰退，台股出口股承壓」、「SOX 重挫 -2% 領先台股科技股 → 對外資權值股不利」、「美10Y > 4.5% → 高 PE 成長股估值壓抑」）。
+步驟六：新聞事件面 - 歸納近半年新聞中的「利多催化劑」與「利空/風險事件」，評估是否與技術籌碼訊號相互印證或背離（若無新聞則註明「近期無顯著新聞催化」）。
 
 【輸出格式】使用 Markdown 語法，生成以下架構的報告：
 
@@ -2723,6 +2747,7 @@ padding:12px 16px;margin:8px 0;">
 - **技術/籌碼亮點**：（均線與法人的共振現象）
 - **基本面與估值**：（目前股價是否透支未來成長，357估值定位）
 - **財報體質**：（企業DNA類型說明、OPM商業話語權、五力雷達弱點、地雷警示是否觸發）
+- **新聞事件面**：（歸納近半年關鍵新聞的催化劑與風險事件，對後市與籌碼的影響；無則註明）
 
 ### 四、具體戰術建議
 ⚠️ 以下內容僅供參考，不構成買賣邀約。
@@ -2747,9 +2772,10 @@ padding:12px 16px;margin:8px 0;">
             st.session_state[_ai_sum_key] = _ai_sum_result
 
         if _ai_sum_cached and not _do_ai_sum:
+            _show_news_expander(st.session_state.get(_ai_sum_key + '_news', []))
             st.markdown(_ai_sum_cached)
         elif not _do_ai_sum:
-            st.caption('▲ 點擊上方按鈕，AI 將綜合技術面、基本面、財報體檢四大群組資料生成完整戰略評估報告。')
+            st.caption('▲ 點擊上方按鈕，AI 將綜合技術面、基本面、財報體檢、近半年新聞五大面向生成完整戰略評估報告。')
 
 # ══════════════════════════════════════════════════════════════
 # ══════════════════════════════════════════════════════════════

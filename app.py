@@ -1295,22 +1295,26 @@ def _fetch_macro_news(n: int = 5) -> list:
     return _out[:n]
 
 
-def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5) -> list:
+def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5, recency: str = "") -> list:
     """抓取個股相關新聞（Google News RSS 中英文雙搜尋）。失敗時回傳空串列。
     透過 NAS Squid proxy 路由（Streamlit Cloud IP 易被 Google News RSS 限速/封鎖）。
+    recency：Google News 時間運算子（如 '6m' 近半年 / '7d'），空字串=不限。
+    每則含 link 與排序用 _ts，並依發布時間新→舊排序。
     """
     try:
         import feedparser as _fp
         import html as _h
         import re as _re2
+        import time as _time_sn
     except ImportError:
         return []
     try:
         from proxy_helper import fetch_url as _furl_sn
     except ImportError:
         _furl_sn = None
-    _q_tw = f"{stock_id} {stock_name}".strip()
-    _q_en = f"Taiwan stock {stock_id} {stock_name}".strip()
+    _rec = f" when:{recency}" if recency else ""
+    _q_tw = f"{stock_id} {stock_name}{_rec}".strip()
+    _q_en = f"Taiwan stock {stock_id} {stock_name}{_rec}".strip()
     _feeds = [
         ('Google新聞(中文)', f'https://news.google.com/rss/search?q={_q_tw}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant'),
         ('Google新聞(英文)', f'https://news.google.com/rss/search?q={_q_en}&hl=en-US&gl=US&ceid=US:en'),
@@ -1331,9 +1335,11 @@ def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5) -> list:
                 _summ  = _h.unescape(_e.get('summary', _e.get('description', ''))).strip()
                 _summ  = _re2.sub(r'<[^>]+>', '', _summ)[:150].strip()
                 _pub   = str(_e.get('published', ''))[:16]
+                _pp    = _e.get('published_parsed')
+                _ts    = _time_sn.mktime(_pp) if _pp else 0.0
                 if _title:
-                    _out.append({'title': _title, 'summary': _summ,
-                                 'source': _src, 'published': _pub})
+                    _out.append({'title': _title, 'summary': _summ, 'source': _src,
+                                 'published': _pub, 'link': _e.get('link', ''), '_ts': _ts})
                 if len(_out) >= n:
                     break
             print(f'[StockNews/{_src}] ✅ {stock_id} 累計 {len(_out)} 則')
@@ -1341,6 +1347,7 @@ def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5) -> list:
             print(f'[StockNews/{_src}] ❌ {_ne}')
         if len(_out) >= n:
             break
+    _out.sort(key=lambda _x: _x.get('_ts', 0.0), reverse=True)  # 新→舊
     return _out[:n]
 
 

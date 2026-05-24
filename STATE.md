@@ -120,8 +120,13 @@
 | #43 #46 #47 | feat(stock): 個股故事化三階段 — 財報名詞快查 / 技術指標白話 / 估值河流圖「怎麼看」(Task 2) | 1d805c2 / 9334ec5 / ee10b05 |
 | #44 | fix(data): **FinMind SDK 缺失改走 raw HTTP** — 修個股「資料全抓不到」NoneType 崩潰 | a7a48ee |
 | #45 | refactor(stock): 集保籌碼改吃主代碼 sid2、上移至 AI 總結上方、納入 AI prompt | 818376c |
+| #48 | docs: 同步 v5.0 本輪決策與架構（STATE/SPEC/ARCHITECTURE） | ee05ff6 |
+| #49 #50 | feat(stock-grp): 個股組合故事化 — 「兩套排行」白話導讀 + SQ品質分/FGMS前瞻/批次財報體檢欄位白話 | 044c407 / 55e3cf0 |
+| #51 | fix(data): `_get_loader` 加版本鍵 — 改 loader 碼自動換新 `@st.cache_resource` 實例，解 hot-reload 後仍跑 PR #44 前舊 loader 的 NoneType 殘留 | 6470da6 |
+| #52 | fix(chip): 集保籌碼解析抓正確時序表 — 診斷定位表#9(343×16) 表頭未被當欄名 → 整數欄名升首列為表頭 + `_find_major_col` 補認「百分比」+ 評分加有效日期比例；修日期/大戶比例全 None | 1fc8365 |
+| #53 | feat(stock): 個股 AI 總結納入「近半年新聞」— `_fetch_stock_news` 加 `recency='6m'`+link+日期排序、新聞 5→25 則、可摺疊新聞清單（隨快取顯示）、prompt 加「步驟六 新聞事件面」+ 深度解析新聞 bullet | (本 PR) |
 
-> **v5.0 三大任務狀態**：Task 1 稽核修復 ✅ / Task 2 故事化（總經 ✅ + 個股 ✅ 三階段）/ Task 3 AI 解盤 ✅（各 tab 早已具備，未重複）。詳見 `SPEC.md §9`。
+> **v5.0 三大任務狀態**：Task 1 稽核修復 ✅ / Task 2 故事化（總經 ✅ + 個股 ✅ + 個股組合 ✅）/ Task 3 AI 解盤 ✅（各 tab 早已具備；個股 AI 再強化納入近半年新聞事件面，PR #53）。詳見 `SPEC.md §9`。
 
 ## 🎯 Backlog
 
@@ -141,7 +146,7 @@
 - [ ] **#U8** `etf_tab_single.py:183` — 配息「平準金佔比」需公開說明書揭露，計畫加 SITCA 抓取（⚠️ 全新端點，response 格式未知，sandbox 無法驗證，盲寫高風險 — 建議線上可測時再做）
 - [x] **#U9** ✅ `tab_stock.py` 龍頭預警區雙 bug 修復（單位 元→億 + 真實股本比 cl/股本≥50% cx/股本≥80%，新增 `_fetch_share_capital`）— PR `bfc60e7`
 - [x] **#U10** ✅ `tab_stock_picker._check_pe_zone` 改真 TTM 4Q EPS 加總（抽 `_fetch_quarterly_is` 共用）— PR `bfc60e7`
-- [ ] **#U11** 集保大戶籌碼 — 🔶 **自建爬蟲版已實作**：`chip_radar.py`（norway.twsthr.info `StockHolders.aspx`，走 proxy_helper + 隨機 UA + `pandas.read_html` 自適應欄位偵測 + `@st.cache_data(ttl=86400)`，PR #45 後改吃主代碼 `sid2`、移除自有輸入框、上移至「AI 首席顧問總結」上方、摘要注入 AI prompt），含 Plotly 雙軸圖（散戶人數 bar / 大戶比例 line）+ 防呆 + 🔬 解析診斷面板。**待雲端驗證**：sandbox 連不到目標站（norway.twsthr.info），實際表格欄位結構需雲端跑一次看診斷面板對齊。原 `tab_stock_picker._check_major_holders`（FinMind premium）維持 robust 回「⚠️ 需付費 token」不動
+- [x] **#U11** ✅ 集保大戶籌碼 — **自建爬蟲版已實作**：`chip_radar.py`（norway.twsthr.info `StockHolders.aspx`，走 proxy_helper + 隨機 UA + `pandas.read_html` 自適應欄位偵測 + `@st.cache_data(ttl=86400)`，PR #45 後改吃主代碼 `sid2`、移除自有輸入框、上移至「AI 首席顧問總結」上方、摘要注入 AI prompt），含 Plotly 雙軸圖（散戶人數 bar / 大戶比例 line）+ 防呆 + 🔬 解析診斷面板。**✅ 解析已校正（PR #52）**：使用者雲端展開診斷面板定位 read_html 共 21 表、真正時序表為表#9（343×16，表頭未被當欄名 → 整數欄名升首列為表頭 + `_find_major_col` 補認「百分比」+ 評分加有效日期比例），日期/大戶比例(43.88%)/散戶人數正常。原 `tab_stock_picker._check_major_holders`（FinMind premium）維持 robust 回「⚠️ 需付費 token」不動
 - ⚠️ **v5.0 Task 3（每 tab AI 解盤）其實早已完成**：總經(台股大盤戰情研判)/個股(五維診斷雷達)/個股組合/智慧選股(三型)/ETF(etf_tab_ai) 都已有 AI 區塊 — **勿再加通用 AI 模組造成重複**（PR #38 曾誤加個股第二個 AI，已撤）。唯一缺 AI 的是 高息網本體/教學/籌碼，但多無強需求
 - [x] **#U12** ✅ 結案（非技術債）：`app.py:429 fetch_financials` 的「v3.35 簡化版」僅為 docstring 版本標籤，函式運作正常（100% FinMind status=200），無未實作邏輯，不需動作
 
