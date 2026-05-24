@@ -336,3 +336,9 @@ PR #5 既有 5 個 API（`is_configured` / `list_portfolios` / `load_portfolio` 
 - 【近20日籌碼集中度】：`_con20`/`_cty20`/`_sig20`（注入籌碼動向段）。
 - 【基本面先行指標 D2】：`_li_green/_li_yellow/_li_red` + 明細。
 - 指令強化：四、戰術建議**強制引用系統實算價位、嚴禁自行虛構**；步驟一/二分別納入籌碼集中度、D2 先行指標判讀。
+
+### §9.7 個股新聞改走 NAS FastAPI 中繼站（PR #56/#57）
+雲端機房 IP 直連 Google News RSS **一律 403**（沙箱實測）；Squid proxy CONNECT 對 Google 亦可能受阻 → 新聞長期抓不到。
+- `proxy_helper.nas_relay_fetch(url)`：呼叫 `nas_server.py` 的 `/proxy?url=...` 透明中繼端點（家用台灣 IP server-side 代抓、原樣回傳 body），帶 `X-API-Key`。
+- `_fetch_stock_news` 抓取串接：**NAS 中繼站 → Squid proxy → 直連**；查詢字串 `urllib.parse.quote` 編碼；`_diag` 逐路徑記錄 HTTP/則數供 UI 顯示。
+- **需設定**：Secrets `NAS_BASE_URL`（如 `http://xxx.synology.me:8765`）+ `NAS_API_KEY`，且 `nas_server.py` 運行、該埠對 Streamlit Cloud 可達。未設定則自動跳過、回退 Squid/直連。

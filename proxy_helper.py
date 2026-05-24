@@ -193,6 +193,49 @@ def fetch_url(url: str, headers: dict = None,
     return None
 
 
+def get_nas_relay() -> tuple[str, str] | None:
+    """讀取 NAS FastAPI 中繼站設定 → (base_url, api_key)；未設定回 None。
+    支援 env / st.secrets 的 NAS_BASE_URL（或 NAS_RELAY_URL）+ NAS_API_KEY。"""
+    import os as _o
+    _base = _o.environ.get('NAS_BASE_URL') or _o.environ.get('NAS_RELAY_URL')
+    _key = _o.environ.get('NAS_API_KEY', '')
+    if not _base:
+        try:
+            import streamlit as _s
+            _sec = _s.secrets
+            _base = _base or _sec.get('NAS_BASE_URL') or _sec.get('NAS_RELAY_URL')
+            _key = _key or _sec.get('NAS_API_KEY', '')
+        except Exception:
+            pass
+    if not _base:
+        return None
+    return (str(_base).rstrip('/'), str(_key or ''))
+
+
+def nas_relay_fetch(url: str, timeout: int = 15) -> requests.Response | None:
+    """透過 NAS FastAPI 中繼站 /proxy 端點，以家用台灣 IP 代為抓取 url。
+    成功回 requests.Response（200），未設定/非200/例外回 None。"""
+    _cfg = get_nas_relay()
+    if _cfg is None:
+        return None
+    _base, _key = _cfg
+    try:
+        _r = requests.get(
+            f'{_base}/proxy',
+            params={'url': url},
+            headers={'X-API-Key': _key} if _key else {},
+            timeout=timeout,
+            verify=False,
+        )
+        if _r.status_code == 200:
+            print(f'[NAS中繼] ✅ {url[:70]} HTTP 200')
+            return _r
+        print(f'[NAS中繼] HTTP {_r.status_code} {url[:70]}')
+    except Exception as _e:
+        print(f'[NAS中繼] ❌ {type(_e).__name__}: {_e}')
+    return None
+
+
 get_proxies = get_proxy_config  # 向下相容別名（get_proxies 指向有 TTL 快取的版本）
 
 

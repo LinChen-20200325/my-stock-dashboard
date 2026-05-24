@@ -1313,9 +1313,10 @@ def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5, recency: 
             _diag.append('feedparser/urllib 匯入失敗')
         return []
     try:
-        from proxy_helper import fetch_url as _furl_sn
+        from proxy_helper import fetch_url as _furl_sn, nas_relay_fetch as _nas_rf
     except ImportError:
         _furl_sn = None
+        _nas_rf = None
         if _diag is not None:
             _diag.append('proxy_helper 未載入 → 僅能直連（雲端易 403）')
     _rec = f" when:{recency}" if recency else ""
@@ -1330,18 +1331,29 @@ def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5, recency: 
         _via = ''
         try:
             _fd = None
-            if _furl_sn is not None:
+            # 路徑①：NAS FastAPI 中繼站（家用台灣 IP server-side 代抓，最不易被 Google 403）
+            if _nas_rf is not None:
+                _r_relay = _nas_rf(_url, timeout=15)
+                if _r_relay is not None:
+                    _rtxt = _r_relay.text if hasattr(_r_relay, 'text') else _r_relay.content.decode('utf-8', 'ignore')
+                    _fd = _fp.parse(_rtxt)
+                    _via = f'NAS中繼 HTTP {getattr(_r_relay, "status_code", "?")}/{len(getattr(_fd, "entries", []))}則'
+                else:
+                    _via = 'NAS中繼未設定或失敗'
+            # 路徑②：Squid proxy（CONNECT 隧道，會自動降級直連）
+            if (_fd is None or not getattr(_fd, 'entries', None)) and _furl_sn is not None:
                 _r_sn = _furl_sn(_url, timeout=10)
                 if _r_sn is not None:
                     _st = getattr(_r_sn, 'status_code', '?')
                     _sn_txt = _r_sn.text if hasattr(_r_sn, 'text') else _r_sn.content.decode('utf-8', 'ignore')
                     _fd = _fp.parse(_sn_txt)
-                    _via = f'proxy HTTP {_st}/{len(getattr(_fd, "entries", []))}則'
+                    _via += f' | Squid HTTP {_st}/{len(getattr(_fd, "entries", []))}則'
                 else:
-                    _via = 'proxy回None'
+                    _via += ' | Squid回None'
+            # 路徑③：直連（雲端機房 IP 多為 403，最後手段）
             if _fd is None or not getattr(_fd, 'entries', None):
                 _fd = _fp.parse(_url)
-                _via += f' →直連{len(getattr(_fd, "entries", []))}則'
+                _via += f' | 直連{len(getattr(_fd, "entries", []))}則'
             for _e in _fd.entries:
                 _title = _h.unescape(_e.get('title', '')).strip()
                 _summ  = _h.unescape(_e.get('summary', _e.get('description', ''))).strip()
