@@ -80,7 +80,7 @@ def _find_col(cols: list[str], keywords: tuple[str, ...]) -> str | None:
 def _find_major_col(cols: list[str]) -> str | None:
     """大戶持股『比例』欄：優先同時含大戶關鍵字 + 比例/率/% 字樣，再退而求其次。"""
     _major = ('大股東', '大戶', '400張', '1000張', '千張', '集中')
-    _ratio = ('比例', '率', '%', '占', '佔')
+    _ratio = ('比例', '率', '%', '占', '佔', '百分比', '百分點')
     # pass1：大戶 + 比例
     for c in cols:
         cl = str(c)
@@ -113,14 +113,26 @@ def _adaptive_parse(tables: list[pd.DataFrame]) -> pd.DataFrame:
         if t is None or getattr(t, 'empty', True) or t.shape[1] < 2:
             continue
         ft = _flatten_cols(t)
+        # read_html 未抓到表頭時欄名是整數索引（'0','1',…）→ 用第一列當表頭
+        # （twsthr 時間序列表即此情況，真實欄名「資料日期 / >400張大股東持有百分比」在首列）
+        if len(ft) >= 2 and all(str(c).strip().isdigit() for c in ft.columns):
+            ft = ft.copy()
+            ft.columns = [str(x).strip() for x in ft.iloc[0].tolist()]
+            ft = ft.iloc[1:].reset_index(drop=True)
         cols = list(ft.columns)
         c_major = _find_major_col(cols)
         c_retail = _find_col(cols, ('股東人數', '散戶', '50張', '人數'))
         if not (c_major or c_retail):
             continue
         c_date = _find_col(cols, ('日期', '週', 'date', '時間')) or cols[0]
-        # 評分：有大戶比例最重要，再來散戶人數，最後越多列（時序越長）越好
-        score = (2.0 if c_major else 0) + (1.0 if c_retail else 0) + min(len(ft), 300) / 1000.0
+        # 有效日期比例（時間序列指標）— 分級分佈表/雜訊無有效日期，會被壓低分數
+        _date_valid = 0.0
+        if c_date in ft.columns:
+            _dts = _parse_date_series(ft[c_date])
+            _date_valid = float(_dts.notna().mean()) if len(_dts) else 0.0
+        # 評分：有效日期(時序) > 大戶比例 > 散戶人數 > 列數
+        score = (_date_valid * 3.0 + (2.0 if c_major else 0)
+                 + (1.0 if c_retail else 0) + min(len(ft), 300) / 1000.0)
         if score > best_score:
             best_score = score
             best = (ft, c_date, c_major, c_retail)
