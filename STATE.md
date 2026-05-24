@@ -128,7 +128,13 @@
 | #54 | fix(stock): 半年新聞區塊永遠顯示（移除空清單 early-return）+ 空時 `st.info` 明講原因；快取分支 None sentinel 不顯示誤導空框 | 38d38b5 |
 | #55 | feat(stock): AI 五維總結補餵已算章節 — 關鍵價位(支撐壓力/停利停損)、近20日籌碼集中度、D2先行指標注入 prompt（防呆）；戰術建議強制引用實算價位、嚴禁虛構 | 24f92dd |
 | #56 | fix(stock): 個股新聞 URL 編碼(quote) + 失敗診斷可視化（_diag 逐 feed 記 proxy/直連·HTTP·則數·例外，0 則時 expander 顯示）| bc70e9f |
-| #57 | feat(infra): 個股新聞改走 NAS FastAPI 中繼站優先 — `proxy_helper.nas_relay_fetch` 打 `/proxy?url=`（X-API-Key），串接 NAS中繼→Squid→直連；需 Secrets NAS_BASE_URL/NAS_API_KEY | (本 PR) |
+| #57 | feat(infra): 個股新聞改走 NAS FastAPI 中繼站優先 — `proxy_helper.nas_relay_fetch` 打 `/proxy?url=`（X-API-Key），串接 NAS中繼→Squid→直連；需 Secrets NAS_BASE_URL/NAS_API_KEY | abe29a1 |
+| #58 | fix(stock): Google News 加 `CONSENT=YES` cookie 繞同意頁（修診斷 `Squid 200/0則`：proxy 通但 Google 回 consent HTML 而非 RSS）+ 0則時印 body 預覽 | 39b0aca |
+| #59 | fix(etf): ETF 新聞改走 proxy + CONSENT cookie（原本完全直連 Google 必 403）| 6bdf2c2 |
+| #60 | fix(names): 股名表 TWSE/TPEx OpenAPI 改走 NAS proxy（稽核任務一·連線防護）| e63be1c |
+| #61 #62 | feat(ui): 故事化任務二補白話 — ETF 單一/回測(費用率/Beta/AUM/夏普/MDD/CAGR) + 高息網(殖利率/PE/PB/7%防禦網) + 智慧選股(三階段濾網) 各加「💡 這項數據代表什麼？」expander | 1ec6d51 / d553115 |
+
+> **自動健檢稽核結論（唯讀稽核 4 子任務）**：失效按鈕 0（`if not st.button` 為合法閘門）；空資料 IndexError 風險經驗證**多為誤報**（`tab_stock_picker` len≥60 早退、`chip_radar`/`tab_stock_grp` 已 guard）。真實修復＝新聞 consent(#58)/ETF新聞(#59)/股名表(#60) 三個 proxy 缺口。剩 `app.py` TWSE OpenAPI＝死碼未呼叫、IMF/Gemini 非台灣站不阻。
 
 > **v5.0 三大任務狀態**：Task 1 稽核修復 ✅ / Task 2 故事化（總經 ✅ + 個股 ✅ + 個股組合 ✅）/ Task 3 AI 解盤 ✅（各 tab 早已具備；個股 AI 再強化納入近半年新聞事件面，PR #53）。詳見 `SPEC.md §9`。
 
