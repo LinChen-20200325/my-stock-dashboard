@@ -1434,6 +1434,11 @@ with tab_macro:
 with tab_stock:
     render_tab_stock()
 
+    # ── 💠 集保籌碼大戶雷達（單檔深度檢驗，輸入後才觸發）──
+    st.markdown('---')
+    from chip_radar import render_chip_radar
+    render_chip_radar()
+
 
 with tab_stock_grp:
     render_stock_grp()
