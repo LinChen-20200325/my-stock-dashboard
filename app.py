@@ -1215,8 +1215,7 @@ def _fetch_macro_news(n: int = 5) -> list:
             if _furl_news is not None:
                 _r_rss = _furl_news(_url, timeout=10)
                 if _r_rss is not None:
-                    _rss_txt = _r_rss.text if hasattr(_r_rss, 'text') else _r_rss.content.decode('utf-8', 'ignore')
-                    _fd = _fp.parse(_rss_txt)
+                    _fd = _fp.parse(_r_rss.content)  # 餵 bytes：避免 str+encoding 宣告被 feedparser 拒解析
             if _fd is None or not getattr(_fd, 'entries', None):
                 # 降級直連（proxy 失效時）
                 _fd = _fp.parse(_url)
@@ -1295,8 +1294,7 @@ def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5, recency: 
             if _nas_rf is not None:
                 _r_relay = _nas_rf(_url, timeout=15)
                 if _r_relay is not None:
-                    _rtxt = _r_relay.text if hasattr(_r_relay, 'text') else _r_relay.content.decode('utf-8', 'ignore')
-                    _fd = _fp.parse(_rtxt)
+                    _fd = _fp.parse(_r_relay.content)  # 餵 bytes（見下）
                     _via = f'NAS中繼 HTTP {getattr(_r_relay, "status_code", "?")}/{len(getattr(_fd, "entries", []))}則'
                 else:
                     _via = 'NAS中繼未設定或失敗'
@@ -1305,12 +1303,12 @@ def _fetch_stock_news(stock_id: str, stock_name: str = "", n: int = 5, recency: 
                 _r_sn = _furl_sn(_url, headers=_news_hdr, timeout=10)
                 if _r_sn is not None:
                     _st = getattr(_r_sn, 'status_code', '?')
-                    _sn_txt = _r_sn.text if hasattr(_r_sn, 'text') else _r_sn.content.decode('utf-8', 'ignore')
-                    _fd = _fp.parse(_sn_txt)
+                    # 餵 bytes：RSS body 含 encoding="UTF-8" 宣告時，餵 str 會被 feedparser 拒解析→0則
+                    _fd = _fp.parse(_r_sn.content)
                     _ne2 = len(getattr(_fd, 'entries', []))
                     _via += f' | Squid HTTP {_st}/{_ne2}則'
                     if _ne2 == 0:
-                        _via += f'｜body[:120]={_sn_txt[:120].strip()!r}'
+                        _via += f'｜body[:120]={_r_sn.content[:120].decode("utf-8", "ignore").strip()!r}'
                 else:
                     _via += ' | Squid回None'
             # 路徑③：直連（雲端機房 IP 多為 403，最後手段）
