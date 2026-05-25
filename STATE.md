@@ -137,6 +137,7 @@
 | #69 | feat(ui): 補完最後 3 tab 故事化（葡萄串領息法/產業熱力圖/ETF組合配置 核心衛星·再平衡·Overlap）→ **全 tab 故事化完整** | e90a604 |
 | #70-#73 | feat: **每 tab AI 補餵該頁全章節**（稽核 4 AI 後）— 個股組合(五維/SQ/FGMS/財報體檢/風控警示)、智慧選股Stage3(餵滿9+6+修/4/3錯標)、總經裁決(NDC/PMI/外銷/CPI/美股科技動能)、ETF AI(持股重疊Overlap/主動弱勢度換股，跨檔 session_state 持久化) | 93be635/fd84b1f/4a4ca69/f8d5474 |
 | (本輪) | fix(stock): 近20日籌碼集中度去重 — 改複用 K 線已載入 df2 的 外資/投信/volume 欄（皆張，比例一致）直接計算，新增 `daily_checklist.analyze_20d_chips_from_df`；df2 無籌碼欄/法人全 0 時才退回原 `analyze_20d_chips` API 版。修「籌碼集中度取得失敗：價量資料失敗」（原獨立 uncached FinMind 雙呼叫撞 quota；df2 已快取卻被忽略）。順帶修正千張單位（原 API 版誤把股當張） | 3911bce |
+| (本輪) | fix(etf): 修復持股 Overlap 矩陣誤判 0% — 成份股名稱跨來源格式不一（yfinance「台積電 (2330)」vs Yahoo「台積電」）導致比對不到。新增 `_canonical_holding_key`（去代碼括號+空白+小寫）正規化，`calc_holdings_overlap_pct`/`calc_jaccard_overlap` 改用正規化 key 比對 | (待 push) |
 | (本輪) | feat(ai): 各 Tab AI 白話結構化摘要【範本＝個股】— 新增共用 `ai_structured_summary.build_structured_summary_prompt()`（強制白話禁術語、逐章節結論＋時事、缺新聞明說）。個股 tab 改用之：6 白話章節（技術/關鍵價/籌碼/基本面/財報/大環境）＋個股新聞。待確認後複製至其餘 6 tab（時事採混合來源） | (待 push) |
 | (本輪) | fix(etf): 修復組合頁 `render_etf_holdings` 迴圈 `StreamlitDuplicateElementId` — 新增 `key` 參數，plotly_chart/dataframe 各帶唯一 key；組合頁傳 `port_{i}_{t}`、單一頁傳 `single_{ticker}` | (待 push) |
 | (本輪) | feat(etf): 持股明細顯示「中文名 (代碼)」— 新增 `_enrich_tw_holding_name()`，yfinance 成分股以 top_holdings index 取代碼 + `stock_names.get_stock_name` 補中文（查無中文退回「英文 (代碼)」，海外成分股保留原名）。`fetch_etf_holdings` yfinance 分支套用 | (待 push) |
