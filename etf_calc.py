@@ -468,6 +468,36 @@ def compute_etf_peer_ranking(ticker: str, periods: tuple = (63, 126, 252)) -> di
 # ══════════════════════════════════════════════════════════════
 # 持股重疊度（Holdings Overlap）— 純函式，零外部依賴
 # ══════════════════════════════════════════════════════════════
+def _canonical_holding_key(name) -> str:
+    """把持股名稱正規化成「跨來源比對用」的 key。
+
+    不同來源的成份股名稱格式不一：
+      - yfinance（補中文後）：「台積電 (2330)」
+      - 台灣 Yahoo / MoneyDJ：「台積電」
+    若直接用原字串比對，同一支股票會被當成兩支 → overlap 誤判為 0%。
+    這裡統一去掉「(代碼)」括號與所有空白、轉小寫，讓兩者對得上。
+    """
+    import re as _re_c
+    _s = str(name or '').strip()
+    _s = _re_c.sub(r'[（(]\s*\d{3,6}[A-Za-z]?\s*[)）]', '', _s)  # 去代碼括號
+    _s = _re_c.sub(r'\s+', '', _s).replace('　', '')          # 去空白（含全形）
+    return _s.lower()
+
+
+def _canonical_weight_map(h) -> dict:
+    """把 {原始名: 權重} 轉成 {正規化 key: 權重}（同 key 相加防呆）。"""
+    _out = {}
+    for _k, _v in (h or {}).items():
+        _ck = _canonical_holding_key(_k)
+        if not _ck:
+            continue
+        try:
+            _out[_ck] = _out.get(_ck, 0.0) + float(_v)
+        except (TypeError, ValueError):
+            continue
+    return _out
+
+
 def calc_holdings_overlap_pct(h1, h2):
     """權重 Overlap%：兩 ETF 共同持股、取較小權重加總。業界標準同質性指標。
 
@@ -480,6 +510,7 @@ def calc_holdings_overlap_pct(h1, h2):
     ----------
     h1, h2 : dict[str, float] | None
         個股名 → 權重百分比（如 5.0 表示 5%）。None/空 dict 回 0.0。
+        個股名以 `_canonical_holding_key` 正規化後比對，跨來源（含/不含代碼）皆可對上。
 
     Returns
     -------
@@ -487,15 +518,14 @@ def calc_holdings_overlap_pct(h1, h2):
     """
     if not h1 or not h2:
         return 0.0
-    _common = set(h1.keys()) & set(h2.keys())
+    _m1 = _canonical_weight_map(h1)
+    _m2 = _canonical_weight_map(h2)
+    _common = set(_m1.keys()) & set(_m2.keys())
     if not _common:
         return 0.0
     _overlap = 0.0
     for _k in _common:
-        try:
-            _overlap += min(float(h1[_k]), float(h2[_k]))
-        except (TypeError, ValueError):
-            continue
+        _overlap += min(_m1[_k], _m2[_k])
     return round(min(_overlap, 100.0), 2)
 
 
@@ -519,8 +549,10 @@ def calc_jaccard_overlap(h1, h2):
     """
     if not h1 or not h2:
         return 0.0
-    _s1 = set(h1.keys() if hasattr(h1, 'keys') else h1)
-    _s2 = set(h2.keys() if hasattr(h2, 'keys') else h2)
+    _s1 = {_canonical_holding_key(_k) for _k in (h1.keys() if hasattr(h1, 'keys') else h1)}
+    _s2 = {_canonical_holding_key(_k) for _k in (h2.keys() if hasattr(h2, 'keys') else h2)}
+    _s1.discard('')
+    _s2.discard('')
     _union = _s1 | _s2
     if not _union:
         return 0.0
