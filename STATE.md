@@ -137,6 +137,7 @@
 | #69 | feat(ui): 補完最後 3 tab 故事化（葡萄串領息法/產業熱力圖/ETF組合配置 核心衛星·再平衡·Overlap）→ **全 tab 故事化完整** | e90a604 |
 | #70-#73 | feat: **每 tab AI 補餵該頁全章節**（稽核 4 AI 後）— 個股組合(五維/SQ/FGMS/財報體檢/風控警示)、智慧選股Stage3(餵滿9+6+修/4/3錯標)、總經裁決(NDC/PMI/外銷/CPI/美股科技動能)、ETF AI(持股重疊Overlap/主動弱勢度換股，跨檔 session_state 持久化) | 93be635/fd84b1f/4a4ca69/f8d5474 |
 | (本輪) | fix(stock): 近20日籌碼集中度去重 — 改複用 K 線已載入 df2 的 外資/投信/volume 欄（皆張，比例一致）直接計算，新增 `daily_checklist.analyze_20d_chips_from_df`；df2 無籌碼欄/法人全 0 時才退回原 `analyze_20d_chips` API 版。修「籌碼集中度取得失敗：價量資料失敗」（原獨立 uncached FinMind 雙呼叫撞 quota；df2 已快取卻被忽略）。順帶修正千張單位（原 API 版誤把股當張） | 3911bce |
+| (本輪) | feat(diag): 資料診斷 tab 新增「🛰️ 測試 NAS 代理 + 成分股」按鈕 — 偵測 PROXY_URL(遮蔽密碼)/NAS 中繼站、出口 IP、實測抓 0050.TW 成分股。根因：Streamlit Cloud 海外 IP 被 MoneyDJ 403，需設 `PROXY_URL` secret（NAS Squid 台灣 IP）才抓得到台股 ETF 成分股 | (待 push) |
 | (本輪) | feat(etf): ETF 成分股（持股明細）顯示 — 新增 `etf_render.render_etf_holdings(ticker, holdings=None, top_n=15)`（前 N 大權重水平長條圖 + 完整表格 + 合計權重；抓不到回友善 ⚪）。ETF 單一分析 tab 走勢圖後新增「🧩 成分股」區；ETF 組合 tab 新增「🧩 各檔成分股明細」（每檔 expander，複用 Overlap 既抓的 `_h_dict` 不重複抓取）。資料源 `fetch_etf_holdings`（yfinance→MoneyDJ） | (待 push) |
 | (本輪) | fix(stock): 無配息成長股 357 結論 `UnboundLocalError` — `_357_c`/`_357_verdict` 僅在 `if avg_div2 > 0` 內賦值，但第二個 357結論 `st.markdown`（含判讀邏輯）寫在 if 外無條件執行 → 成長股（avg_div2≤0）觸發崩潰。改把第二個 markdown 移入 if 守衛；無配息時兩張 357 卡皆略過（已有「無配息」warning + PE/PB 河流圖）。屬既有 bug，與籌碼集中度修復無關 | (待 push) |
 

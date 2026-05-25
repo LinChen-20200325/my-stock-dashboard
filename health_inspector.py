@@ -233,6 +233,70 @@ def render_data_health_raw():
             else:
                 st.error(_diag_msg)
 
+    # ── 🛰️ NAS 代理 + ETF 成分股抓取自我檢測（確認 PROXY_URL 是否生效）──
+    _px_c1, _px_c2 = st.columns([3, 7])
+    with _px_c1:
+        if st.button('🛰️ 測試 NAS 代理 + 成分股',
+                     key='btn_test_proxy', use_container_width=True):
+            import time as _tt
+            import re as _re_px
+            _lines = []
+            _ok = True
+            try:
+                from proxy_helper import get_proxy_config, get_nas_relay, fetch_url
+                # 1) 代理偵測（密碼遮蔽，不外洩 secret）
+                _pc = get_proxy_config()
+                if _pc and _pc.get('http'):
+                    _masked = _re_px.sub(r'//([^:/]+):[^@]+@', r'//\1:***@',
+                                         str(_pc['http']))
+                    _lines.append(f'🔑 Squid 代理 PROXY_URL 已偵測：`{_masked}`')
+                else:
+                    _ok = False
+                    _lines.append('⚪ **未偵測到 PROXY_URL**（Streamlit Cloud → Settings → '
+                                  'Secrets 尚未設定 NAS Squid 代理）')
+                _relay = get_nas_relay()
+                _lines.append(f'🔁 NAS FastAPI 中繼站：'
+                              f'{"已設定 `" + _relay[0] + "`" if _relay else "未設定"}')
+                # 2) 出口 IP（透過代理）— 確認是否走台灣 IP
+                try:
+                    _rip = fetch_url('https://api.ipify.org?format=json',
+                                     timeout=10, attempts=1)
+                    if _rip is not None and _rip.status_code == 200:
+                        _ip = _re_px.search(r'"ip"\s*:\s*"([^"]+)"', _rip.text)
+                        _lines.append(f'🌐 對外出口 IP：`{_ip.group(1) if _ip else _rip.text[:40]}`'
+                                      '（應為你 NAS 的台灣 IP；若為海外機房 IP 代表代理未生效）')
+                    else:
+                        _lines.append('🌐 出口 IP 測試無回應（不一定影響成分股，續看下方實測）')
+                except Exception as _eip:
+                    _lines.append(f'🌐 出口 IP 測試略過：{type(_eip).__name__}')
+                # 3) 實測抓 0050.TW 成分股（清快取確保真打網路）
+                from etf_fetch import fetch_etf_holdings
+                try:
+                    fetch_etf_holdings.clear()
+                except Exception:
+                    pass
+                _t0 = _tt.time()
+                with st.spinner('實測抓取 0050.TW 成分股中…'):
+                    _h = fetch_etf_holdings('0050.TW')
+                _dt = _tt.time() - _t0
+                if _h:
+                    _lines.append(f'✅ **0050.TW 成分股抓取成功：{len(_h)} 檔**（{_dt:.1f}s）'
+                                  '— 代理生效，其他台股 ETF（含主動式）應一併恢復')
+                else:
+                    _ok = False
+                    _lines.append(f'❌ **0050.TW 成分股仍抓不到**（{_dt:.1f}s）'
+                                  '— 代理未生效或來源全擋；請查 console `[Holdings/...]` log')
+            except Exception as _epx:
+                _ok = False
+                _lines.append(f'❌ 測試異常：{type(_epx).__name__}: {_epx}')
+            st.session_state['_diag_proxy_ok']  = _ok
+            st.session_state['_diag_proxy_msg'] = '\n\n'.join(_lines)
+            st.rerun()
+    with _px_c2:
+        _pm = st.session_state.get('_diag_proxy_msg')
+        if _pm:
+            (st.success if st.session_state.get('_diag_proxy_ok') else st.warning)(_pm)
+
     # ══════════════════════════════════════════════════════════════
     # 📊 全域資料健康總表（統一視圖）
     # ══════════════════════════════════════════════════════════════
