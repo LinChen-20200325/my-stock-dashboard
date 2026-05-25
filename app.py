@@ -566,6 +566,7 @@ def fetch_financials(sid, industry: str = ""):
     return cl, cx, _capex, cl_src, cx_src, cx_src_capex, fetch_errors
 
 
+@st.cache_data(ttl=3600, max_entries=10)
 def fetch_revenue(sid):
     try:
         loader = _get_loader()

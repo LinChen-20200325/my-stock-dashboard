@@ -111,13 +111,26 @@ def render_tab_stock_picker(gemini_fn=None, candidates=None):
         st.warning(f'⚠️ 超過 30 檔（{len(_tickers)}），僅取前 30 檔避免 API 風暴')
         _tickers = _tickers[:30]
 
-    # ── 跑三階段篩選 ─────────────────────────────────────────
+    # ── 跑三階段篩選（ThreadPoolExecutor 並行）─────────────────
+    # 原本序列跑 N 檔，每檔 ~2 yfinance + ~4 FinMind ≈ 上百次阻塞請求逐一等。
+    # _check_one_stock 線程安全（獨立 requests + yfinance、無 st.*、無共享 loader），
+    # 故無需鎖；總請求數不變（FinMind 限額為每小時制），純粹把 I/O 等待重疊。
     _today = _dt_sp.date.today()
-    results: list[dict] = []
-    with st.spinner(f'三階段篩選中（{len(_tickers)} 檔）...'):
-        for _tk in _tickers:
-            _r = _check_one_stock(_tk, _today, yf)
-            results.append(_r)
+    from concurrent.futures import ThreadPoolExecutor
+    _idx_results: dict[int, dict] = {}
+    with st.spinner(f'三階段篩選中（{len(_tickers)} 檔，並行）...'):
+        with ThreadPoolExecutor(max_workers=5) as _pick_exec:
+            _pick_futs = {
+                _pick_exec.submit(_check_one_stock, _tk, _today, yf): _i
+                for _i, _tk in enumerate(_tickers)
+            }
+        for _fut, _i in _pick_futs.items():
+            try:
+                _idx_results[_i] = _fut.result()
+            except Exception as _e_pick:
+                print(f'[picker] {_tickers[_i]}: {type(_e_pick).__name__}: {_e_pick}')
+                _idx_results[_i] = _blank_pick_result(_tickers[_i], note='❌ 分析失敗')
+    results: list[dict] = [_idx_results[_i] for _i in range(len(_tickers))]
 
     # ── Stage 1：基本面表 ─────────────────────────────────────
     st.markdown('---')
@@ -185,11 +198,12 @@ def render_tab_stock_picker(gemini_fn=None, candidates=None):
 # 主檢測函式：對單檔個股跑完所有可實作條件
 # ══════════════════════════════════════════════════════════════
 
-def _check_one_stock(ticker: str, today, yf) -> dict:
-    """對單檔個股跑完 Stage 1 + Stage 2 — 失敗條件統一回灰色 ❓ 不阻斷流程。"""
-    _r = {
+def _blank_pick_result(ticker: str, note: str = '') -> dict:
+    """選股結果骨架（Stage 1×9 + Stage 2×6 全 ❓ N/A）。
+    _check_one_stock 起手 + 並行錯誤路徑共用，確保下游一律拿到完整 key。"""
+    return {
         'ticker': ticker,
-        'note':   '',
+        'note':   note,
         # Stage 1 labels (9 條件)
         'debt_ratio_label':   '❓ N/A',
         'three_rate_label':   '❓ N/A',
@@ -210,6 +224,12 @@ def _check_one_stock(ticker: str, today, yf) -> dict:
         'major_label':        '❓ N/A',
         's2_pass_cnt':        0,
     }
+
+
+def _check_one_stock(ticker: str, today, yf) -> dict:
+    """對單檔個股跑完 Stage 1 + Stage 2 — 失敗條件統一回灰色 ❓ 不阻斷流程。
+    全程獨立 requests + yfinance、零 st.* 呼叫 → 線程安全，可丟進 ThreadPoolExecutor。"""
+    _r = _blank_pick_result(ticker)
     # ── 抓 K 線（yfinance + .TW / .TWO 雙後綴重試）──
     _df = None
     for _sfx in ('.TW', '.TWO'):
