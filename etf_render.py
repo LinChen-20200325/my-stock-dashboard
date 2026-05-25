@@ -260,6 +260,50 @@ def _render_bias(df: pd.DataFrame, ticker: str) -> None:
             st.plotly_chart(fig, width='stretch')
 
 
+def render_etf_holdings(ticker: str, holdings: dict = None, top_n: int = 15) -> None:
+    """列出 ETF 成分股（持股名稱 → 權重%）：前 top_n 大權重長條圖 + 完整表格。
+
+    holdings 可由呼叫端預先以 fetch_etf_holdings 抓好傳入（避免重複抓取）；
+    為 None 時自行抓取。抓不到時顯示友善 ⚪ 提示。
+    """
+    if holdings is None:
+        from etf_fetch import fetch_etf_holdings
+        with st.spinner(f'抓取 {ticker} 成分股清單...'):
+            holdings = fetch_etf_holdings(ticker)
+    if not holdings:
+        st.caption(f'⚪ {ticker} 成分股清單暫時抓不到（海外 IP 受限或 MoneyDJ/yfinance 端點變動）。'
+                   '可至投信官網或公開說明書查閱前十大持股。')
+        return
+    _items   = sorted(holdings.items(), key=lambda kv: kv[1], reverse=True)
+    _total_w = sum(w for _, w in _items)
+    # ── 前 top_n 大權重長條圖（最大者置頂）──
+    _top   = _items[:top_n]
+    _names = [n for n, _ in _top][::-1]
+    _ws    = [w for _, w in _top][::-1]
+    fig = go.Figure(go.Bar(
+        x=_ws, y=_names, orientation='h',
+        marker_color='#1f6feb',
+        text=[f'{w:.2f}%' for w in _ws], textposition='outside',
+        hovertemplate='%{y}：%{x:.2f}%<extra></extra>',
+    ))
+    fig.update_layout(
+        template='plotly_dark', height=max(240, 26 * len(_top) + 70),
+        title=dict(text=f'{ticker} 前 {len(_top)} 大成分股權重',
+                   font=dict(size=13, color='#8b949e')),
+        xaxis_title='權重 %', margin=dict(l=0, r=40, t=40, b=10),
+        paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
+    )
+    st.plotly_chart(fig, width='stretch')
+    # ── 完整成分股表格 ──
+    _df = pd.DataFrame(
+        [{'排名': i + 1, '成分股': n, '權重(%)': f'{w:.2f}'}
+         for i, (n, w) in enumerate(_items)]
+    )
+    st.dataframe(_df, use_container_width=True, hide_index=True)
+    st.caption(f'共 {len(_items)} 檔成分股，合計權重 {_total_w:.1f}%'
+               + ('（多數來源僅提供前十大持股，故未達 100%）' if _total_w < 60 else ''))
+
+
 # ETF → GICS 類股對照（僅涵蓋常見 ETF，未知 ETF 歸入「其他」）
 _ETF_SECTOR_MAP = {
     'XLK': '資訊科技', 'QQQ': '資訊科技', '00631L.TW': '資訊科技',

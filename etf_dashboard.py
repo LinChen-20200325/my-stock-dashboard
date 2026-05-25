@@ -40,7 +40,7 @@ from etf_render import (  # noqa: F401
     MACRO_ALLOC, MACRO_DESC,
     macro_allocation_banner, _colored_box, _teacher_conclusion,
     _plot_etf_chart, _plot_correlation, _plot_holdings_overlap, _render_bias,
-    _render_weakness_table,
+    _render_weakness_table, render_etf_holdings,
     _ETF_SECTOR_MAP, _check_sector_exposure,
     _render_monte_carlo, _etf_ai_backtest,
     _US_SECTORS, _TW_SECTORS, _PERIOD_MAP,
