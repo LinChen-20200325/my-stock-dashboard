@@ -144,60 +144,88 @@ def parse_stocks(raw):
     stocks = re.split(r'[,\s\n；，]+', raw.strip())
     return [s.strip() for s in stocks if s.strip() and re.match(r'^\d{4,6}[A-Z]?$', s.strip())]
 
+# ── Gemini 金鑰池（做法 B：多帳號 key 自動換手，分散額度 / 速率限制）──────
+# 讀 GEMINI_API_KEY + GEMINI_API_KEY_2 .. _6（st.secrets 優先，os.environ fallback）。
+# gemini_call 以 round-robin 起手 key（不同呼叫/不同 tab 從不同把 key 開始 → 分散負載），
+# 任一把遇到 429（速率/額度滿）或 403（無效）時自動換下一把，全部用盡才報錯。
+_GEMINI_KEY_NAMES = ['GEMINI_API_KEY'] + [f'GEMINI_API_KEY_{_i}' for _i in range(2, 7)]
+_gemini_rr = [0]  # round-robin 起手索引（每次呼叫遞增）
+
+
+def _gemini_keys() -> list:
+    """收集所有可用 Gemini API key（去重保序）。st.secrets 優先，os.environ fallback。"""
+    _keys = []
+    for _n in _GEMINI_KEY_NAMES:
+        try:
+            _v = st.secrets.get(_n, '') or os.environ.get(_n, '')
+        except Exception:
+            _v = os.environ.get(_n, '')
+        _v = str(_v or '').strip()
+        if _v and _v not in _keys:
+            _keys.append(_v)
+    if api_key and api_key not in _keys:
+        _keys.append(api_key)
+    return _keys
+
+
 def gemini_call(prompt, max_tokens=2048):
-    _key = os.environ.get('GEMINI_API_KEY', '') or api_key
-    if not _key:
-        return '⚠️ 請在 Cell 1 設定 GEMINI_API_KEY'
+    _keys = _gemini_keys()
+    if not _keys:
+        return '⚠️ 請設定 GEMINI_API_KEY（可另加 GEMINI_API_KEY_2 ~ _6 分散額度）'
+    # round-robin 起手：不同呼叫從不同把 key 開始，自然把負載分散到各帳號
+    _start = _gemini_rr[0] % len(_keys)
+    _gemini_rr[0] = (_gemini_rr[0] + 1) % 1_000_000
+    _keys = _keys[_start:] + _keys[:_start]
     # 2026-03 有效模型：1.5系列全部退役，2.5為主力
     _models = ['gemini-2.5-flash-lite', 'gemini-2.5-flash',
                'gemini-2.0-flash', 'gemini-2.0-flash-lite']
     for _model in _models:
-        try:
-            # Gemini 2.5 預設開「思考模式」，思考 token 會跟輸出共用 maxOutputTokens
-            # 額度 → 常導致回覆只生成一半就被截斷。白話摘要不需深度推理，關閉思考
-            # （thinkingBudget=0），把整個額度留給實際輸出。
-            _gen_cfg = {'temperature': 0.3, 'maxOutputTokens': max_tokens}
-            if _model.startswith('gemini-2.5'):
-                _gen_cfg['thinkingConfig'] = {'thinkingBudget': 0}
-            _r = requests.post(
-                f'https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent',
-                params={'key': _key},
-                json={'systemInstruction': {'parts': [{'text': _PERSONA}]},
-                      'contents': [{'parts': [{'text': prompt}]}],
-                      'generationConfig': _gen_cfg},
-                timeout=120
-            )
-            if _r.status_code == 200:
-                _d = _r.json()
-                _cands = _d.get('candidates', [])
-                if _cands:
-                    _content = _cands[0].get('content', {})
-                    _parts = _content.get('parts', [])
-                    if _parts and _parts[0].get('text'):
-                        return _parts[0]['text']
-                # 檢查是否被 safety filter 攔截
-                _finish = _cands[0].get('finishReason', '') if _cands else ''
-                if _finish == 'SAFETY':
-                    continue  # 換下一個 model 試
-            elif _r.status_code == 400:
-                _err_body = _r.json() if _r.text else {}
-                _err_msg  = _err_body.get('error', {}).get('message', _r.text[:100])
-                print(f'[Gemini/{_model}] 400 Bad Request: {_err_msg}')
-                continue
-            elif _r.status_code == 403:
-                return '⚠️ API Key 無效或無權限（HTTP 403）—— 請確認 GEMINI_API_KEY 正確'
-            elif _r.status_code == 404:
-                continue  # 此 model 不存在，試下一個
-            elif _r.status_code == 429:
-                time.sleep(5)
-                continue  # rate limit
-            else:
-                print(f'[Gemini/{_model}] HTTP {_r.status_code}: {_r.text[:200]}')
-                continue
-        except Exception as _ge:
-            print(f'[Gemini/{_model}] {type(_ge).__name__}: {_ge}')
-            time.sleep(1)
-    return '⚠️ AI 服務暫時無法使用（已嘗試所有模型）—— 請確認 GEMINI_API_KEY 正確'
+        # Gemini 2.5 預設開「思考模式」，思考 token 會跟輸出共用 maxOutputTokens 額度
+        # → 常導致回覆只生成一半就被截斷。白話摘要不需深度推理，關閉思考（thinkingBudget=0）。
+        _gen_cfg = {'temperature': 0.3, 'maxOutputTokens': max_tokens}
+        if _model.startswith('gemini-2.5'):
+            _gen_cfg['thinkingConfig'] = {'thinkingBudget': 0}
+        for _ki, _key in enumerate(_keys):
+            try:
+                _r = requests.post(
+                    f'https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent',
+                    params={'key': _key},
+                    json={'systemInstruction': {'parts': [{'text': _PERSONA}]},
+                          'contents': [{'parts': [{'text': prompt}]}],
+                          'generationConfig': _gen_cfg},
+                    timeout=120
+                )
+                if _r.status_code == 200:
+                    _d = _r.json()
+                    _cands = _d.get('candidates', [])
+                    if _cands:
+                        _parts = _cands[0].get('content', {}).get('parts', [])
+                        if _parts and _parts[0].get('text'):
+                            return _parts[0]['text']
+                    # safety 攔截：換 key 無助益 → 直接換下一個 model
+                    if _cands and _cands[0].get('finishReason', '') == 'SAFETY':
+                        break
+                    continue  # 空回覆 → 試下一把 key
+                elif _r.status_code == 400:
+                    _err_msg = (_r.json() if _r.text else {}).get('error', {}).get('message', _r.text[:100])
+                    print(f'[Gemini/{_model}] 400 Bad Request: {_err_msg}')
+                    break  # 設定/prompt 問題，換 key 無用 → 換下一個 model
+                elif _r.status_code == 403:
+                    print(f'[Gemini/{_model}] 403 第 {_ki+1} 把 key 無效/無權限 → 換下一把')
+                    continue  # 換 key
+                elif _r.status_code == 404:
+                    break  # 此 model 不存在 → 換下一個 model
+                elif _r.status_code == 429:
+                    print(f'[Gemini/{_model}] 429 第 {_ki+1} 把 key 額度/速率滿 → 換下一把')
+                    continue  # 換 key（做法 B 核心：分散到別把帳號）
+                else:
+                    print(f'[Gemini/{_model}] HTTP {_r.status_code}: {_r.text[:200]}')
+                    continue  # 換 key
+            except Exception as _ge:
+                print(f'[Gemini/{_model}] key#{_ki+1} {type(_ge).__name__}: {_ge}')
+                continue  # 換 key
+    return ('⚠️ AI 服務暫時無法使用（所有 key 與模型都試過了）—— '
+            '請確認各把金鑰額度，或稍後再試')
 
 # ── 本地快取（SQLite + Pickle 雙軌）───────────────────────
 _CACHE_DIR = '/tmp/stock_cache'
