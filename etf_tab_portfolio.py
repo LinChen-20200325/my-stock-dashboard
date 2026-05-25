@@ -34,7 +34,7 @@ def render_etf_portfolio(gemini_fn=None):
     from etf_dashboard import (
         _check_sector_exposure, _colored_box, _compute_etf_warroom_row,
         _plot_correlation, _plot_holdings_overlap, _render_weakness_table,
-        _teacher_conclusion,
+        render_etf_holdings, _teacher_conclusion,
         build_holdings_overlap_matrix, compute_etf_weakness_row,
         fetch_etf_dividends, fetch_etf_holdings, fetch_etf_info, fetch_etf_price,
         macro_allocation_banner,
@@ -427,6 +427,25 @@ def render_etf_portfolio(gemini_fn=None):
     else:
         st.warning('資料不足，無法計算相關係數')
 
+    # ── 各檔 ETF 成分股明細（成分股顯示）──────────────────────
+    st.markdown('#### 🧩 各檔 ETF 成分股明細')
+    st.caption('💡 點開每檔 ETF 看它「真正持有哪些股票、各佔多少權重」。'
+               '下方的持股 Overlap 矩陣，即是用這份成分股清單兩兩比對得出。')
+    _h_dict = {}
+    _h_miss = []
+    with st.spinner('抓取各檔成份股清單（首次約 10-20 秒，之後 1 日快取）...'):
+        for t in tickers:
+            _h = fetch_etf_holdings(t)
+            if _h:
+                _h_dict[t] = _h
+            else:
+                _h_miss.append(t)
+    for t in tickers:
+        _hl_label = (f'📋 {t}　成分股 {len(_h_dict[t])} 檔'
+                     if t in _h_dict else f'📋 {t}　⚪ 暫無成分股資料')
+        with st.expander(_hl_label, expanded=False):
+            render_etf_holdings(t, holdings=_h_dict.get(t), top_n=15)
+
     # ── 持股 Overlap 矩陣（PR — claude/etf-holdings-overlap）────
     st.markdown('#### 🧬 持股 Overlap 矩陣（成份股重疊度）')
     st.caption('💡 與上方「價格相關」對照看：價格相關高可能因市場連動（如全市場股災），'
@@ -439,15 +458,6 @@ def render_etf_portfolio(gemini_fn=None):
         help='權重 Overlap%：兩 ETF 共同持股取較小權重加總；Jaccard：|A∩B|/|A∪B| 只看股票名單'
     )
     _method_key = 'jaccard' if 'Jaccard' in _ov_method else 'weight'
-    _h_dict = {}
-    _h_miss = []
-    with st.spinner('抓取成份股清單（首次約 10-20 秒，之後 1 日快取）...'):
-        for t in tickers:
-            _h = fetch_etf_holdings(t)
-            if _h:
-                _h_dict[t] = _h
-            else:
-                _h_miss.append(t)
     if _h_miss:
         st.warning(f'⚪ 以下 ETF 拿不到成份股，對應行列顯示 N/A：{", ".join(_h_miss)}'
                    f'（MoneyDJ 暫無資料或為新 ETF）')

@@ -31,7 +31,7 @@ def render_etf_single(gemini_fn=None):
     from unified_decision import render_unified_decision
     from etf_dashboard import (
         # 渲染類
-        _colored_box, _plot_etf_chart, _render_bias,
+        _colored_box, _plot_etf_chart, _render_bias, render_etf_holdings,
         _teacher_conclusion, macro_allocation_banner,
         # 計算類
         auto_detect_benchmark, calc_avg_yield, calc_cagr, calc_current_yield,
@@ -566,6 +566,12 @@ def render_etf_single(gemini_fn=None):
     # ── 走勢圖 ────────────────────────────────────────────────
     st.markdown(f'#### 📈 {ticker} 近5年走勢')
     _plot_etf_chart(df, ticker, benchmark, bench_df)
+
+    # ── 成分股（持股明細）────────────────────────────────────
+    st.markdown(f'#### 🧩 {ticker} 成分股（持股明細）')
+    st.caption('💡 看這檔 ETF「真正持有哪些股票、各佔多少權重」。權重越集中代表越押注少數個股、'
+               '分散效果越低；可對照前面的折溢價與走勢一起判斷。')
+    render_etf_holdings(ticker, top_n=15)
 
     # ── 存入 session_state 供 Tab⑨ 使用 ─────────────────────
     # 海外 ETF 偵測：ticker 非 4-6 碼台灣代號（如 VOO/SCHD/QQQ）→ 本系統 NAV/費用率
