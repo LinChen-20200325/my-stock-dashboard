@@ -1498,6 +1498,7 @@ class StockDataLoader:
 
 
 # ── 模組級函式：MJ 財報體檢所需原始數據 ─────────────────────
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_financial_statements(stock_id: str, token: str = "") -> dict:
     """
     從 FinMind 抓取最新一季資產負債表、現金流量表、損益表，

@@ -285,12 +285,11 @@ def render_stock_grp():
                 # ── 多因子評分 ─────────────────────────────────
                 if df4 is not None and not df4.empty:
                     try:
-                        df4_full, _, name4_full = loader_t3.get_combined_data(sid4, 300, True)
-                        if df4_full is not None and not df4_full.empty:
-                            # name4_full 可能等於 sid4（代碼），需排除才能使用後備
-                            _n4_use = (name4_full if name4_full and name4_full != sid4 else None) or name4 or _gsn(sid4)
-                            sf = _sss(df4_full, sid4, _n4_use)
-                            score_t3.append(sf)
+                        # 重用第一階段已抓好的 df4（get_combined_data days=360 的 tail(300)），
+                        # 不再以 days=300 重打一次 API（原本每檔 get_combined_data 跑兩次純浪費）。
+                        _n4_use = name4 or _gsn(sid4)
+                        sf = _sss(df4, sid4, _n4_use)
+                        score_t3.append(sf)
                     except Exception:
                         pass
 
