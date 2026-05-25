@@ -571,7 +571,7 @@ def render_etf_single(gemini_fn=None):
     st.markdown(f'#### 🧩 {ticker} 成分股（持股明細）')
     st.caption('💡 看這檔 ETF「真正持有哪些股票、各佔多少權重」。權重越集中代表越押注少數個股、'
                '分散效果越低；可對照前面的折溢價與走勢一起判斷。')
-    render_etf_holdings(ticker, top_n=15)
+    render_etf_holdings(ticker, top_n=15, key=f'single_{ticker}')
 
     # ── 存入 session_state 供 Tab⑨ 使用 ─────────────────────
     # 海外 ETF 偵測：ticker 非 4-6 碼台灣代號（如 VOO/SCHD/QQQ）→ 本系統 NAV/費用率

@@ -137,6 +137,7 @@
 | #69 | feat(ui): 補完最後 3 tab 故事化（葡萄串領息法/產業熱力圖/ETF組合配置 核心衛星·再平衡·Overlap）→ **全 tab 故事化完整** | e90a604 |
 | #70-#73 | feat: **每 tab AI 補餵該頁全章節**（稽核 4 AI 後）— 個股組合(五維/SQ/FGMS/財報體檢/風控警示)、智慧選股Stage3(餵滿9+6+修/4/3錯標)、總經裁決(NDC/PMI/外銷/CPI/美股科技動能)、ETF AI(持股重疊Overlap/主動弱勢度換股，跨檔 session_state 持久化) | 93be635/fd84b1f/4a4ca69/f8d5474 |
 | (本輪) | fix(stock): 近20日籌碼集中度去重 — 改複用 K 線已載入 df2 的 外資/投信/volume 欄（皆張，比例一致）直接計算，新增 `daily_checklist.analyze_20d_chips_from_df`；df2 無籌碼欄/法人全 0 時才退回原 `analyze_20d_chips` API 版。修「籌碼集中度取得失敗：價量資料失敗」（原獨立 uncached FinMind 雙呼叫撞 quota；df2 已快取卻被忽略）。順帶修正千張單位（原 API 版誤把股當張） | 3911bce |
+| (本輪) | fix(etf): 修復組合頁 `render_etf_holdings` 迴圈 `StreamlitDuplicateElementId` — 新增 `key` 參數，plotly_chart/dataframe 各帶唯一 key；組合頁傳 `port_{i}_{t}`、單一頁傳 `single_{ticker}` | (待 push) |
 | (本輪) | feat(etf): 持股明細顯示「中文名 (代碼)」— 新增 `_enrich_tw_holding_name()`，yfinance 成分股以 top_holdings index 取代碼 + `stock_names.get_stock_name` 補中文（查無中文退回「英文 (代碼)」，海外成分股保留原名）。`fetch_etf_holdings` yfinance 分支套用 | (待 push) |
 | (本輪) | feat(picker): 智慧選股三階段濾網候選清單下方新增「➕ 額外加入代碼」text_input — 逗號/空白分隔、驗證 4-6 碼、與高息網勾選合併去重、無法識別者警示 | (待 push) |
 | (本輪) | feat(etf): ETF 成分股改用**國內版台灣 Yahoo 股市**為主源 — 新增 `_fetch_holdings_yahoo_tw()`（tw.stock.yahoo.com/quote/{sym}/holding，海外 IP 可直連繞過 MoneyDJ 403），雙策略解析（內嵌 JSON + 表格文字）。`fetch_etf_holdings` 順序改為 yfinance → **YahooTW** → MoneyDJ(備源)。自我檢測按鈕加 Yahoo 直測行 | (待 push) |

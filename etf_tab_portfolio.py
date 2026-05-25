@@ -440,11 +440,12 @@ def render_etf_portfolio(gemini_fn=None):
                 _h_dict[t] = _h
             else:
                 _h_miss.append(t)
-    for t in tickers:
+    for _i_t, t in enumerate(tickers):
         _hl_label = (f'📋 {t}　成分股 {len(_h_dict[t])} 檔'
                      if t in _h_dict else f'📋 {t}　⚪ 暫無成分股資料')
         with st.expander(_hl_label, expanded=False):
-            render_etf_holdings(t, holdings=_h_dict.get(t), top_n=15)
+            render_etf_holdings(t, holdings=_h_dict.get(t), top_n=15,
+                                key=f'port_{_i_t}_{t}')
 
     # ── 持股 Overlap 矩陣（PR — claude/etf-holdings-overlap）────
     st.markdown('#### 🧬 持股 Overlap 矩陣（成份股重疊度）')

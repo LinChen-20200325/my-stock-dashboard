@@ -260,11 +260,14 @@ def _render_bias(df: pd.DataFrame, ticker: str) -> None:
             st.plotly_chart(fig, width='stretch')
 
 
-def render_etf_holdings(ticker: str, holdings: dict = None, top_n: int = 15) -> None:
+def render_etf_holdings(ticker: str, holdings: dict = None, top_n: int = 15,
+                        key: str = None) -> None:
     """列出 ETF 成分股（持股名稱 → 權重%）：前 top_n 大權重長條圖 + 完整表格。
 
     holdings 可由呼叫端預先以 fetch_etf_holdings 抓好傳入（避免重複抓取）；
     為 None 時自行抓取。抓不到時顯示友善 ⚪ 提示。
+    key：呼叫端傳入唯一識別（組合頁迴圈、單一頁同頁渲染避免 plotly/dataframe
+         元件 ID 衝突 StreamlitDuplicateElementId）；未傳則以 ticker 當基底。
     """
     if holdings is None:
         from etf_fetch import fetch_etf_holdings
@@ -274,6 +277,7 @@ def render_etf_holdings(ticker: str, holdings: dict = None, top_n: int = 15) -> 
         st.caption(f'⚪ {ticker} 成分股清單暫時抓不到（海外 IP 受限或 MoneyDJ/yfinance 端點變動）。'
                    '可至投信官網或公開說明書查閱前十大持股。')
         return
+    _k = key or ticker or 'etf'
     _items   = sorted(holdings.items(), key=lambda kv: kv[1], reverse=True)
     _total_w = sum(w for _, w in _items)
     # ── 前 top_n 大權重長條圖（最大者置頂）──
@@ -293,13 +297,14 @@ def render_etf_holdings(ticker: str, holdings: dict = None, top_n: int = 15) -> 
         xaxis_title='權重 %', margin=dict(l=0, r=40, t=40, b=10),
         paper_bgcolor='#0d1117', plot_bgcolor='#0d1117',
     )
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, width='stretch', key=f'etfhold_chart_{_k}')
     # ── 完整成分股表格 ──
     _df = pd.DataFrame(
         [{'排名': i + 1, '成分股': n, '權重(%)': f'{w:.2f}'}
          for i, (n, w) in enumerate(_items)]
     )
-    st.dataframe(_df, use_container_width=True, hide_index=True)
+    st.dataframe(_df, use_container_width=True, hide_index=True,
+                 key=f'etfhold_tbl_{_k}')
     st.caption(f'共 {len(_items)} 檔成分股，合計權重 {_total_w:.1f}%'
                + ('（多數來源僅提供前十大持股，故未達 100%）' if _total_w < 60 else ''))
 
