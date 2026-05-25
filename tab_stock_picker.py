@@ -77,15 +77,35 @@ def render_tab_stock_picker(gemini_fn=None, candidates=None):
         _codes, default=_codes[:10], key='picker_multiselect',
         help='預設帶入殖利率最高的前 10 檔，可自由增減；上限 30 檔')
 
+    _extra_raw = st.text_input(
+        '➕ 額外加入代碼（不在高息網清單內也可；逗號或空白分隔，例：6770, 2330 1101）',
+        value='', key='picker_extra_codes',
+        help='手動補進想一起跑三階段的個股，會與上方勾選自動合併、去重；台股代號 4-6 碼')
+
     if not st.button('🎯 開始三階段篩選', key='picker_btn',
                      use_container_width=True, type='primary'):
         st.info('💡 勾選候選股票後按「🎯 開始三階段篩選」')
         return
 
-    # ── 解析清單 ─────────────────────────────────────────────
-    _tickers = list(dict.fromkeys(_sel))
+    # ── 解析清單（高息網勾選 + 手動輸入，合併去重）─────────────
+    import re as _re_pk
+    _extra: list[str] = []
+    _bad:   list[str] = []
+    for _c0 in _re_pk.split(r'[,\s、，;；]+', (_extra_raw or '').strip()):
+        if not _c0:
+            continue
+        _c = _c0.strip().upper().replace('.TWO', '').replace('.TW', '')
+        if _re_pk.fullmatch(r'\d{4,6}[A-Z]?', _c):
+            _extra.append(_c)
+        else:
+            _bad.append(_c0)
+    _tickers = list(dict.fromkeys(list(_sel) + _extra))
+    if _extra:
+        st.caption(f'➕ 已併入手動代碼 {len(_extra)} 檔：{", ".join(_extra)}')
+    if _bad:
+        st.warning(f'⚠️ 略過無法識別的代碼：{", ".join(_bad)}（台股代號應為 4-6 碼數字）')
     if not _tickers:
-        st.error('❌ 請至少勾選一檔候選股票')
+        st.error('❌ 請至少勾選一檔候選股票，或於上方手動輸入代碼')
         return
     if len(_tickers) > 30:
         st.warning(f'⚠️ 超過 30 檔（{len(_tickers)}），僅取前 30 檔避免 API 風暴')
