@@ -153,13 +153,18 @@ def gemini_call(prompt, max_tokens=2048):
                'gemini-2.0-flash', 'gemini-2.0-flash-lite']
     for _model in _models:
         try:
+            # Gemini 2.5 預設開「思考模式」，思考 token 會跟輸出共用 maxOutputTokens
+            # 額度 → 常導致回覆只生成一半就被截斷。白話摘要不需深度推理，關閉思考
+            # （thinkingBudget=0），把整個額度留給實際輸出。
+            _gen_cfg = {'temperature': 0.3, 'maxOutputTokens': max_tokens}
+            if _model.startswith('gemini-2.5'):
+                _gen_cfg['thinkingConfig'] = {'thinkingBudget': 0}
             _r = requests.post(
                 f'https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent',
                 params={'key': _key},
                 json={'systemInstruction': {'parts': [{'text': _PERSONA}]},
                       'contents': [{'parts': [{'text': prompt}]}],
-                      'generationConfig': {'temperature': 0.3,
-                                           'maxOutputTokens': max_tokens}},
+                      'generationConfig': _gen_cfg},
                 timeout=120
             )
             if _r.status_code == 200:

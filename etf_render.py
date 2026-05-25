@@ -669,7 +669,7 @@ def render_sector_heatmap(gemini_fn=None):
                 overall_question='現在資金比較偏好哪些產業、有沒有明顯的輪動、一般人可以怎麼看。',
             )
             with st.spinner('AI 正在用白話幫你整理產業輪動...'):
-                md = gemini_fn(prompt, max_tokens=1000)
+                md = gemini_fn(prompt, max_tokens=1300)
             st.session_state['_sector_ai_md'] = md
             st.markdown(md)
         elif st.session_state.get('_sector_ai_md'):

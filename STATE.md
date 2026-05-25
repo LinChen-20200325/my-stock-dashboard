@@ -138,6 +138,7 @@
 | #70-#73 | feat: **每 tab AI 補餵該頁全章節**（稽核 4 AI 後）— 個股組合(五維/SQ/FGMS/財報體檢/風控警示)、智慧選股Stage3(餵滿9+6+修/4/3錯標)、總經裁決(NDC/PMI/外銷/CPI/美股科技動能)、ETF AI(持股重疊Overlap/主動弱勢度換股，跨檔 session_state 持久化) | 93be635/fd84b1f/4a4ca69/f8d5474 |
 | (本輪) | fix(stock): 近20日籌碼集中度去重 — 改複用 K 線已載入 df2 的 外資/投信/volume 欄（皆張，比例一致）直接計算，新增 `daily_checklist.analyze_20d_chips_from_df`；df2 無籌碼欄/法人全 0 時才退回原 `analyze_20d_chips` API 版。修「籌碼集中度取得失敗：價量資料失敗」（原獨立 uncached FinMind 雙呼叫撞 quota；df2 已快取卻被忽略）。順帶修正千張單位（原 API 版誤把股當張） | 3911bce |
 | (本輪) | fix(etf): 修復持股 Overlap 矩陣誤判 0% — 成份股名稱跨來源格式不一（yfinance「台積電 (2330)」vs Yahoo「台積電」）導致比對不到。新增 `_canonical_holding_key`（去代碼括號+空白+小寫）正規化，`calc_holdings_overlap_pct`/`calc_jaccard_overlap` 改用正規化 key 比對 | (待 push) |
+| (本輪) | fix(ai): 修復 AI 白話總結被截斷 — Gemini 2.5 思考模式吃掉 maxOutputTokens 額度致回覆生成一半就斷。`gemini_call` 對 2.5 模型加 `thinkingConfig.thinkingBudget=0` 關閉思考（全域，7 tab 受惠）；ETF單一 1200→1600、熱力圖 1000→1300 補額度 | (待 push) |
 | (本輪) | feat(ai): 白話結構化 AI 摘要**複製到其餘 6 tab** — 總經/個股組合/高息網/ETF單一/ETF組合 改用 `build_structured_summary_prompt` 逐章節白話輸出；產業熱力圖**新增** AI（傳 gemini_fn）。時事混合來源：個股組合/ETF抓標的新聞、總經/熱力圖/高息網用全市場。ETF單一刪除舊 unified_decision 三卡片改白話摘要。7 檔 compile+ruff 綠 | (待 push) |
 | (本輪) | feat(ai): 各 Tab AI 白話結構化摘要【範本＝個股】— 新增共用 `ai_structured_summary.build_structured_summary_prompt()`（強制白話禁術語、逐章節結論＋時事、缺新聞明說）。個股 tab 改用之：6 白話章節（技術/關鍵價/籌碼/基本面/財報/大環境）＋個股新聞。待確認後複製至其餘 6 tab（時事採混合來源） | (待 push) |
 | (本輪) | fix(etf): 修復組合頁 `render_etf_holdings` 迴圈 `StreamlitDuplicateElementId` — 新增 `key` 參數，plotly_chart/dataframe 各帶唯一 key；組合頁傳 `port_{i}_{t}`、單一頁傳 `single_{ticker}` | (待 push) |

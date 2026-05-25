@@ -690,7 +690,7 @@ def render_etf_single(gemini_fn=None):
             st.warning('未提供 AI 服務（gemini_fn），無法生成總結。')
         else:
             with st.spinner('AI 白話總結生成中...'):
-                _ai_result = gemini_fn(_prompt, max_tokens=1200)
+                _ai_result = gemini_fn(_prompt, max_tokens=1600)
             if _ai_result and not str(_ai_result).startswith('⚠️'):
                 st.session_state[f'{_ai_sum_key}_result'] = _ai_result
             else:
