@@ -505,6 +505,51 @@ def fetch_single(symbol, period="60d"):
             if v is None: _os2.environ.pop(k, None)
             else: _os2.environ[k] = v
 
+def fetch_flow_snapshot(period="2y"):
+    """全球資金流向所需的區域 / 跨資產 ETF 收盤序列：並行抓取 + /tmp pickle 快取 30 分。
+
+    回 {顯示名: DataFrame}（沿用 fetch_single 結構）。只在核心 SPY 抓到時才寫快取，
+    避免暫時性全失敗被黏住。供總經 tab「全球資金流向」一節使用。
+    """
+    import os as _os_fl
+    import pickle as _pk_fl
+    import time as _tm_fl
+    from concurrent.futures import ThreadPoolExecutor as _TPE_fl
+    from flow_engine import all_symbols as _all_fl
+
+    _ck_fl = '/tmp/stock_cache/_flow_snapshot.pkl'
+    _os_fl.makedirs('/tmp/stock_cache', exist_ok=True)
+    if _os_fl.path.exists(_ck_fl) and (_tm_fl.time() - _os_fl.path.getmtime(_ck_fl)) / 60 < 30:
+        try:
+            with open(_ck_fl, 'rb') as _f_fl:
+                return _pk_fl.load(_f_fl)
+        except Exception:
+            pass
+
+    _syms = _all_fl()                      # {名稱: 代號}
+    _uniq = sorted(set(_syms.values()))    # 去重後實際抓取（SPY 等共用代號只抓一次）
+
+    def _one(sym):
+        return sym, fetch_single(sym, period=period)
+
+    _by_sym = {}
+    try:
+        with _TPE_fl(max_workers=min(8, len(_uniq))) as _ex_fl:
+            for _sym, _df in _ex_fl.map(_one, _uniq):
+                _by_sym[_sym] = _df
+    except Exception as _e_fl:
+        print(f'[flow] ❌ 並行抓取異常: {_e_fl}')
+
+    out = {name: _by_sym.get(sym) for name, sym in _syms.items()}
+
+    if _by_sym.get('SPY') is not None:     # 核心抓到才快取
+        try:
+            with open(_ck_fl, 'wb') as _f_fl:
+                _pk_fl.dump(out, _f_fl)
+        except Exception:
+            pass
+    return out
+
 def _fetch_otc_via_finmind(token=""):
     if not FINMIND_TOKEN: return None
     try:

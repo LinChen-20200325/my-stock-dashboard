@@ -48,8 +48,8 @@ def render_tab_macro():
     from v4_strategy_engine import V4StrategyEngine
     from daily_checklist import (
         _fetch_otc_via_finmind, calc_stats, evaluate_market_status_v4_final,
-        fetch_adl, fetch_institutional, fetch_margin_balance, fetch_single,
-        multi_chart, section_header, sparkline, stat_card,
+        fetch_adl, fetch_flow_snapshot, fetch_institutional, fetch_margin_balance,
+        fetch_single, multi_chart, section_header, sparkline, stat_card,
         COLORS_7, INTL_MAP, INTL_UNIT, TECH_MAP, TW_MAP, TW_UNIT,
     )
     from macro_alert import (
@@ -2152,6 +2152,74 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         if '美元指數 DXY' in intl:
             st.plotly_chart(sparkline(intl['美元指數 DXY'],'美元指數 DXY','#ffd700'),
                             width='stretch',config={'displayModeBar':False})
+
+    # ══ 全球資金流向（世界區域股市 × 跨資產 Risk-on/off 代理指標）═══════════
+    st.markdown('<hr style="border-color:#21262d;margin:14px 0;">', unsafe_allow_html=True)
+    st.markdown('<div style="background:linear-gradient(90deg,#161b22,transparent);'
+                'border-left:3px solid #1f6feb;border-radius:0 6px 6px 0;padding:8px 14px;margin:16px 0 10px 0;">'
+                '<span style="color:#1f6feb;font-weight:700;">🌊 全球資金流向（世界區域股市 × 跨資產 Risk-on/off）'
+                '</span></div>', unsafe_allow_html=True)
+    st.caption('💡 真實基金流量為付費資料；本區以各區域／資產代表性 ETF 的相對強弱當「資金流向代理」'
+               '（強勢＝資金流入、弱勢＝流出），風險情緒採 252 日滾動 Z-score＋clip(-3,3) 合成。')
+    import flow_engine as _fe
+    with st.spinner('🌐 載入全球資金流向…'):
+        _flow_raw = fetch_flow_snapshot()
+    _flow_close = {n: _fe.to_close_list(df) for n, df in (_flow_raw or {}).items()}
+    _reg_close = {n: _flow_close[n] for n in _fe.REGIONAL_ETFS if _flow_close.get(n)}
+    if not _reg_close:
+        st.info('ℹ️ 全球資金流向資料暫時無法取得（yfinance 海外來源可能限流），可稍後重試。')
+    else:
+        # 1. 世界區域股市：標準化走勢 + 流入流出排名
+        _reg_df = {n: _flow_raw[n] for n in _reg_close}
+        st.plotly_chart(multi_chart(_reg_df, '各區域股市近 45 日標準化比較（起點＝100）', norm=True, height=240),
+                        width='stretch', config={'displayModeBar': False})
+        _rank5 = _fe.rank_regional_flow(_reg_close, days=5)
+        _rank20 = dict(_fe.rank_regional_flow(_reg_close, days=20))
+        if _rank5:
+            _rcols = st.columns(len(_rank5))
+            for _rc, (_nm, _p5) in zip(_rcols, _rank5):
+                _p20 = _rank20.get(_nm)
+                with _rc:
+                    st.metric(_nm, f'{_p5:+.1f}%', f'20日 {_p20:+.1f}%' if _p20 is not None else None)
+            st.caption(f'📥 近 5 日資金流入最強：**{_rank5[0][0]}**（{_rank5[0][1]:+.1f}%）　｜　'
+                       f'📤 流出最弱：**{_rank5[-1][0]}**（{_rank5[-1][1]:+.1f}%）')
+        # 2. 新台幣／外資視角
+        _inst_f = (st.session_state.get('cl_data') or {}).get('inst') or {}
+        _frn = _inst_f.get('外資及陸資') or _inst_f.get('外資')
+        _frn_net = _frn.get('net') if isinstance(_frn, dict) else None
+        _ewt5 = dict(_rank5).get('台灣 EWT')
+        _twd_pct = (tw_s.get('新台幣匯率') or {}).get('pct')
+        _tw_bits = []
+        if _frn_net is not None:
+            _tw_bits.append(f'外資買賣超 **{_frn_net:+.0f} 億**')
+        if _ewt5 is not None:
+            _tw_bits.append(f'台股 ETF（EWT）近 5 日 **{_ewt5:+.1f}%**')
+        if _twd_pct is not None:
+            _tw_bits.append(f'新台幣 **{float(_twd_pct):+.2f}%**')
+        if _tw_bits:
+            st.markdown('**🇹🇼 新台幣／外資視角**：' + '　｜　'.join(_tw_bits))
+            st.caption('EWT（美國掛牌台股 ETF）相對強弱反映海外資金對台股偏好，與外資買賣超、台幣走勢合看。')
+        # 3. 跨資產 Risk-on／Risk-off 風險情緒分數
+        _risk = _fe.compute_risk_score(_flow_close)
+        st.markdown('**⚖️ 跨資產 Risk-on／Risk-off 風險情緒**（252 日滾動 Z-score 合成）')
+        if _risk.get('score') is None:
+            st.info('ℹ️ 跨資產風險情緒資料不足（需約 1 年歷史），暫無法計算。')
+        else:
+            _kc1, _kc2 = st.columns([1, 2])
+            with _kc1:
+                st.metric('風險情緒分數', f"{_risk['score']:+d}")
+            with _kc2:
+                st.markdown(f"目前研判：**{_risk['label']}**　"
+                            "<span style='color:#8b949e;font-size:12px;'>"
+                            "（＋100 極度追逐風險　↔　−100 極度避險）</span>", unsafe_allow_html=True)
+            if _risk.get('components'):
+                _det = '　｜　'.join(
+                    f"{_lbl} {'＋' if _z * _d >= 0 else ''}{round(_z * _d, 1)}"
+                    for _lbl, _z, _d in _risk['components'])
+                st.caption(f'貢獻明細（已乘方向，正＝偏 risk-on）：{_det}')
+            st.caption('📖 領先／滯後：MOVE/VIX 債市壓力為領先訊號——債市波動先飆，常於 1–4 週內傳導至股市；'
+                       'USD/JPY 急貶（carry 平倉）多伴隨風險資產同步下殺。XCCY 基差、穩定幣 SSR 因免費資料源不可得，未納入。')
+
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
     st.markdown(section_header('二','🇹🇼 台股大盤（今日漲跌 + 台幣匯率）','🇹🇼'),unsafe_allow_html=True)
     _twii2 = tw_s.get('台股加權指數')
