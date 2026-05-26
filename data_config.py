@@ -15,8 +15,8 @@ PRIORITY = {
 
 # 快取存活時間（秒）— 短=當日關鍵數據，長=歷史數據
 TTL_CONFIG = {
-    "institutional":   600,    # 10 分鐘 — 法人買賣（收盤後更新）
-    "margin_balance":  600,    # 10 分鐘 — 融資融券餘額
+    "institutional":   1800,   # 30 分鐘 — 法人買賣（收盤後更新，日頻）
+    "margin_balance":  1800,   # 30 分鐘 — 融資融券餘額（日頻）
     "futures":         900,    # 15 分鐘 — 期貨選擇權法人
     "volume":          600,    # 10 分鐘 — 成交量
     "historical":      86400,  # 24 小時 — 歷史/不常變的資料

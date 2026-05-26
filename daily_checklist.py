@@ -461,7 +461,7 @@ def fetch_single(symbol, period="60d"):
     import os as _os2, pickle as _pk2, hashlib as _hs2
     _ck2 = '/tmp/stock_cache/' + _hs2.md5(f'yf_{symbol}_{period}'.encode()).hexdigest() + '.pkl'
     _os2.makedirs('/tmp/stock_cache', exist_ok=True)
-    if _os2.path.exists(_ck2) and (time.time()-_os2.path.getmtime(_ck2))/60 < 10:
+    if _os2.path.exists(_ck2) and (time.time()-_os2.path.getmtime(_ck2))/60 < 30:
         try:
             with open(_ck2,'rb') as _f: return _pk2.load(_f)
         except: pass
