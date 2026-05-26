@@ -911,6 +911,21 @@ def build_leading_fast(days=7, token=""):
     先行指標 v8 — 純 FinMind，完全無 TAIFEX，零多線程
     所有資料從 FinMind 4 個 API 批次取得，不依賴任何爬蟲。
     """
+    import os as _os_li
+    import pickle as _pk_li
+    import hashlib as _hs_li
+    import time as _tm_li
+    # 跨 session pickle 快取（沿用 fetch_single 模式：回傳新物件、線程安全，避開
+    # @st.cache_data 的 DataFrame mutation 陷阱）。先行指標日頻（收盤後更新）→ 30 分鐘 TTL。
+    # 只在 FinMind 主來源真的有回資料時才寫快取（見函式尾 _fm_ok），避免暫時性故障被黏住。
+    _ck_li = '/tmp/stock_cache/' + _hs_li.md5(f'lead_fast_{days}_{token}'.encode()).hexdigest() + '.pkl'
+    _os_li.makedirs('/tmp/stock_cache', exist_ok=True)
+    if _os_li.path.exists(_ck_li) and (_tm_li.time() - _os_li.path.getmtime(_ck_li)) / 60 < 30:
+        try:
+            with open(_ck_li, 'rb') as _f_li:
+                return _pk_li.load(_f_li)
+        except Exception:
+            pass
     import datetime as _dt
     today  = _dt.date.today()
     s_date = today - _dt.timedelta(days=days + 14)
@@ -926,7 +941,9 @@ def build_leading_fast(days=7, token=""):
     df_inst = finmind_get("TaiwanStockTotalInstitutionalInvestors", "", s_ymd, e_ymd, token)
     print(f"[LI-v8] FinMind TX={len(df_tx)} MTX={len(df_mtx)} TXO={len(df_txo)} inst={len(df_inst)}")
     import sys; sys.stdout.flush()
-    if len(df_tx) == 0 and len(df_mtx) == 0 and len(df_txo) == 0 and len(df_inst) == 0:
+    # FinMind 主來源是否有回資料 → 決定函式尾是否寫快取（避免暫時性失敗被快取黏住）
+    _fm_ok = (len(df_tx) + len(df_mtx) + len(df_txo) + len(df_inst)) > 0
+    if not _fm_ok:
         print("[LI-v8] ❌ 所有 FinMind API 均返回空 → 可能速率限制或網路問題")
 
     # ═══ 2. 外資期貨留倉 ════════════════════════════════════════
@@ -1216,6 +1233,13 @@ def build_leading_fast(days=7, token=""):
     filled = sum(1 for _, r in df.iterrows()
                  if any(r.get(c) is not None for c in ["外資大小","選PCR","外(選)","外資"]))
     print(f"[LI-v8] ✅ {len(df)} 筆 ({filled} 筆有數據)")
+    # 只在 FinMind 主來源有回資料時快取；暫時性失敗（_fm_ok=False）不快取，保留下次刷新重試
+    if _fm_ok:
+        try:
+            with open(_ck_li, 'wb') as _f_li:
+                _pk_li.dump(df, _f_li)
+        except Exception:
+            pass
     return df
 
 
