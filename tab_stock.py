@@ -65,6 +65,26 @@ def _fetch_share_capital(sid: str) -> float:
         return 0.0
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _fetch_bps(sid: str) -> float:
+    """yfinance 最新每股淨值（bookValue），雙後綴 .TW/.TWO 重試，失敗回 0.0。
+    供 PB 股價淨值比河流圖橫帶。BPS 季變動低頻 → 快取 1 日，避免每次 Streamlit
+    rerun 都阻塞於 yf.Ticker().info（~1-3 秒網路呼叫）。"""
+    try:
+        import yfinance as _yf_pb
+        for _sfx_pb in ('.TW', '.TWO'):
+            try:
+                _info_pb = _yf_pb.Ticker(f'{sid}{_sfx_pb}').info or {}
+                _bps_v = _info_pb.get('bookValue')
+                if _bps_v and float(_bps_v) > 0:
+                    return float(_bps_v)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return 0.0
+
+
 def render_tab_stock():
     # ─ Late imports（避免循環 import）─
     import datetime
@@ -1539,20 +1559,7 @@ padding:12px 16px;margin:8px 0;">
 
         # ── 估值河流圖（PB 股價淨值比河流，BPS 橫帶 fallback）──────────
         # BPS 變化緩慢，採用 yfinance 最新 bookValue 畫橫帶（不做歷史 rolling）
-        _bps_val = 0.0
-        try:
-            import yfinance as _yf_pb
-            for _sfx_pb in ('.TW', '.TWO'):
-                try:
-                    _info_pb = _yf_pb.Ticker(f'{sid2}{_sfx_pb}').info or {}
-                    _bps_v = _info_pb.get('bookValue')
-                    if _bps_v and float(_bps_v) > 0:
-                        _bps_val = float(_bps_v)
-                        break
-                except Exception:
-                    continue
-        except Exception:
-            pass
+        _bps_val = _fetch_bps(sid2)
 
         if df2 is not None and not df2.empty and _bps_val > 0:
             _PB_LOW, _PB_MID, _PB_HIGH = 0.8, 1.5, 2.5
