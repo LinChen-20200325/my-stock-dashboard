@@ -56,7 +56,7 @@ def render_tab_macro():
         check_macro_alerts, fetch_macro_snapshot, render_macro_alerts,
     )
     from market_strategy import get_market_assessment
-    from leading_indicators import build_leading_fast, render_leading_table
+    from leading_indicators import render_leading_table
     from ui_widgets import beginner_kpi, cond_badge, kpi, teacher_conclusion
     # app.py 內部 helper
     from app import (
@@ -574,22 +574,6 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             def _job_adl():
                 _tok_adl = os.environ.get('FINMIND_TOKEN','') or FINMIND_TOKEN
                 return fetch_adl(days=60, token=_tok_adl)
-
-            def _job_li():
-                # [v8] 直接呼叫，移除內層 Thread（純 FinMind 不需要額外執行緒）
-                try:
-                    tok = _get_fm_token() or FINMIND_TOKEN or os.environ.get('FINMIND_TOKEN','')
-                    result = build_leading_fast(days=14, token=tok)
-                    if result is not None and not result.empty:
-                        print(f'[先行指標] ✅ {len(result)} 筆')
-                    else:
-                        print('[先行指標] ⚠️ 空資料')
-                    return result
-                except Exception as _eli:
-                    import traceback
-                    print(f'[先行指標] ❌ {_eli}')
-                    print(traceback.format_exc())
-                    return None
 
             # ── 並發執行（yfinance 最慢，先丟進去）─────────────
             # [v8] li 移出 TPE，在主流程直接呼叫（Colab worker thread 中 requests 可能受阻）

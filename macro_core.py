@@ -27,7 +27,9 @@ macro_core.py — 兩個 dashboard 共用的總經核心 v1.0
 """
 from __future__ import annotations
 
+import datetime as _dt
 import math
+import re as _re
 from typing import Optional
 
 import numpy as np
@@ -508,24 +510,66 @@ def fetch_ism_pmi(fred_api_key: str = "", *, max_age_days: int = 90) -> dict:
 # ══════════════════════════════════════════════════════════════
 
 def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
-    """抓取台灣製造業 PMI（國發會 NDC 為主，CIER/MacroMicro 等為 fallback；月頻）。
+    """抓取台灣製造業 PMI（9 來源並行賽跑，依優先序取最高優先的有效值；月頻）。
+
+    來源優先序：data.gov.tw → NDC → MacroMicro → CIER(cid21) → StockFeel
+                → Cnyes → FinMind → CIER(cid8) → MoneyDJ
+    各來源彼此獨立、無共享狀態 → ThreadPoolExecutor 並行；關鍵路徑由原序列
+    最壞 ~100s+ 降為 ~單一最慢源，順帶修掉「序列鏈超過 macro pool 70s
+    timeout → PMI 被切成片段」。
 
     Returns
     -------
     dict
       命中：{'value': float, 'date': 'YYYY-MM-DD', 'label': str,
-             'source': str, 'is_proxy': False, 'series_id': str}
+             'source': str, 'is_proxy': bool, 'series_id': str}
       失敗：{'_err_pmi': str, 'value': None}
     """
-    import datetime as _dt
-    import re as _re
+    from concurrent.futures import ThreadPoolExecutor as _TPE_pmi
     today = _dt.date.today()
     errs: list[str] = []
 
-    # ── 方案 0 (新 Primary v10.62.1): data.gov.tw dataset/6100 官方開放資料 ──
-    # 政府資料開放平臺「臺灣採購經理人指數」(提供機關：國發會 NDC)。
-    # 流程：① 試 metadata API 取 resources URL → ② 下載 CSV/JSON 解析末筆
-    # 失敗就 fallback 到既有方案 0~6。
+    # 優先序（越前面越權威）；每個 source fn 線程安全：只讀 today/max_age_days、
+    # 對共享 errs 做 append（CPython list.append 為原子操作），回傳新 dict。
+    _sources = [
+        ('data.gov.tw', _pmi_src_dgtw),
+        ('NDC',         _pmi_src_ndc),
+        ('MacroMicro',  _pmi_src_macromicro),
+        ('CIER',        _pmi_src_cier21),
+        ('StockFeel',   _pmi_src_stockfeel),
+        ('Cnyes',       _pmi_src_cnyes),
+        ('FinMind',     _pmi_src_finmind),
+        ('CIER-cid8',   _pmi_src_cier8),
+        ('MoneyDJ',     _pmi_src_moneydj),
+    ]
+    _results: dict = {}
+    with _TPE_pmi(max_workers=len(_sources)) as _ex_pmi:
+        _fut2name = {_ex_pmi.submit(_fn, today, max_age_days, errs): _nm
+                     for _nm, _fn in _sources}
+        for _fut in _fut2name:
+            _nm = _fut2name[_fut]
+            try:
+                _r = _fut.result()
+            except Exception as _e_fut:
+                errs.append(f'{_nm}:future {type(_e_fut).__name__}')
+                _r = None
+            if _r:
+                _results[_nm] = _r
+    # 依來源優先序回傳第一個命中（與原序列 fallback 語義一致）
+    for _nm, _ in _sources:
+        if _nm in _results:
+            print(f'[macro_core/TW-PMI] ✅ 採用 {_nm}（9 源並行，依優先序）')
+            return _results[_nm]
+    err_msg = ' | '.join(errs) or 'all 9 stages failed'
+    print(f'[macro_core/TW-PMI] ❌ 9 段並行全失敗：{err_msg}')
+    return {'_err_pmi': err_msg, 'value': None}
+
+
+def _pmi_src_dgtw(today, max_age_days, errs):
+    """方案 0 (Primary): data.gov.tw dataset/6100 官方開放資料（國發會 NDC 提供）。
+
+    流程：① metadata API 取 resources URL → ② 下載 CSV/JSON 解析末筆。
+    """
     try:
         import io as _io_dgw
         import csv as _csv_dgw
@@ -604,11 +648,11 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
     except Exception as _e_dg_outer:
         errs.append(f'dgtw_outer:{type(_e_dg_outer).__name__}')
         print(f'[macro_core/TW-PMI/data.gov.tw] ❌ outer {_e_dg_outer}')
+    return None
 
-    # ── 方案 0b (原 Primary): 國發會 NDC 景氣指標 API（鏡像現有 composite endpoint pattern）──
-    # nas_server.py:218 已驗證 https://index.ndc.gov.tw/app/data/indicator/composite 走 JSON；
-    # PMI 端點推測 /PMI 或 /pmi 或 /PMI/latest，多個 endpoint 變體 + 多 JSON shape parser
-    # 都試一遍，attempts=1 走 lean path 不阻塞 macro pool 預算
+
+def _pmi_src_ndc(today, max_age_days, errs):
+    """方案 0b: 國發會 NDC 景氣指標 API（多 endpoint 變體 + 多 JSON shape parser）。"""
     for ndc_url in (
         'https://index.ndc.gov.tw/app/data/indicator/PMI',
         'https://index.ndc.gov.tw/app/data/indicator/pmi',
@@ -670,8 +714,11 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
         except Exception as e:
             errs.append(f'NDC.{ndc_url[-15:]}:{type(e).__name__}')
             print(f'[macro_core/TW-PMI/NDC/{ndc_url[-15:]}] ❌ {e}')
+    return None
 
-    # ── 方案 1: MacroMicro 財經 M 平方（chart 22 = 台灣 PMI）──
+
+def _pmi_src_macromicro(today, max_age_days, errs):
+    """方案 1: MacroMicro 財經 M 平方（chart 22 = 台灣 PMI）。"""
     try:
         from bs4 import BeautifulSoup
         for url in ('https://www.macromicro.me/charts/22/taiwan-pmi',
@@ -699,8 +746,11 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
     except Exception as e:
         errs.append(f'MacroMicro:{type(e).__name__}')
         print(f'[macro_core/TW-PMI/MacroMicro] ❌ {e}')
+    return None
 
-    # ── 方案 2: CIER 官網最新公告列表（cid=21 為新聞稿/PMI 類別）──
+
+def _pmi_src_cier21(today, max_age_days, errs):
+    """方案 2: CIER 官網最新公告列表（cid=21 新聞稿/PMI 類別）。"""
     try:
         from bs4 import BeautifulSoup
         for cier_url in ('https://www.cier.edu.tw/news/list?cid=21',
@@ -733,8 +783,11 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
     except Exception as e:
         errs.append(f'CIER:{type(e).__name__}')
         print(f'[macro_core/TW-PMI/CIER] ❌ {e}')
+    return None
 
-    # ── 方案 3: StockFeel 股感（搜尋頁）──
+
+def _pmi_src_stockfeel(today, max_age_days, errs):
+    """方案 3: StockFeel 股感（搜尋頁）。"""
     try:
         from bs4 import BeautifulSoup
         sf_url = 'https://www.stockfeel.com.tw/?s=%E5%8F%B0%E7%81%A3+PMI'
@@ -762,10 +815,12 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
     except Exception as e:
         errs.append(f'StockFeel:{type(e).__name__}')
         print(f'[macro_core/TW-PMI/StockFeel] ❌ {e}')
+    return None
 
-    # ── 方案 4: 鉅亨網新聞（搜尋台灣 PMI）──
+
+def _pmi_src_cnyes(today, max_age_days, errs):
+    """方案 4: 鉅亨網新聞（搜尋台灣 PMI；JSON 解析，不需 BeautifulSoup）。"""
     try:
-        from bs4 import BeautifulSoup
         cnyes_url = 'https://news.cnyes.com/api/v3/news/category/headline?limit=30&q=%E5%8F%B0%E7%81%A3+PMI'
         r = fetch_url(cnyes_url, timeout=12, attempts=1)
         if r is None:
@@ -796,9 +851,11 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
     except Exception as e:
         errs.append(f'Cnyes:{type(e).__name__}')
         print(f'[macro_core/TW-PMI/Cnyes] ❌ {e}')
+    return None
 
-    # ── 方案 5: FinMind TaiwanEconomicIndicator（v10.62.0 新增）──
-    # 抓 FinMind 官方總經指標 dataset，過濾「PMI」/「製造業」相關 series
+
+def _pmi_src_finmind(today, max_age_days, errs):
+    """方案 5: FinMind TaiwanEconomicIndicator（過濾 PMI/製造業 series 取最新）。"""
     try:
         import os as _os_fm, requests as _rq_fm
         _tok = _os_fm.environ.get('FINMIND_TOKEN')
@@ -837,8 +894,11 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
     except Exception as e:
         errs.append(f'FinMind:{type(e).__name__}')
         print(f'[macro_core/TW-PMI/FinMind] ❌ {e}')
+    return None
 
-    # ── 方案 6: CIER cid=8（PMI 專屬類別，非 cid=21 新聞稿）──
+
+def _pmi_src_cier8(today, max_age_days, errs):
+    """方案 6: CIER cid=8（PMI 專屬類別，非 cid=21 新聞稿）。"""
     try:
         from bs4 import BeautifulSoup
         for cier_url in ('https://www.cier.edu.tw/news/list?cid=8',
@@ -867,8 +927,11 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
     except Exception as e:
         errs.append(f'CIER-cid8:{type(e).__name__}')
         print(f'[macro_core/TW-PMI/CIER-cid8] ❌ {e}')
+    return None
 
-    # ── 方案 7: MoneyDJ 財經知識庫（搜尋頁，HTML 含 PMI 圖表 alt）──
+
+def _pmi_src_moneydj(today, max_age_days, errs):
+    """方案 7: MoneyDJ 財經知識庫（搜尋頁，HTML 含 PMI 圖表 alt）。"""
     try:
         from bs4 import BeautifulSoup
         mdj_url = ('https://www.moneydj.com/KMDJ/Search/SearchListNew.aspx'
@@ -897,10 +960,7 @@ def fetch_tw_pmi(*, max_age_days: int = 90) -> dict:
     except Exception as e:
         errs.append(f'MoneyDJ:{type(e).__name__}')
         print(f'[macro_core/TW-PMI/MoneyDJ] ❌ {e}')
-
-    err_msg = ' | '.join(errs) or 'all 8 stages failed'
-    print(f'[macro_core/TW-PMI] ❌ 8 段備援全失敗：{err_msg}')
-    return {'_err_pmi': err_msg, 'value': None}
+    return None
 
 
 # ══════════════════════════════════════════════════════════════

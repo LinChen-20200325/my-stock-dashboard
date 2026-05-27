@@ -934,11 +934,19 @@ def build_leading_fast(days=7, token=""):
     print(f"[LI-v8] ===== 開始 {s_ymd}~{e_ymd} token={bool(token)} days={days} =====")
     import sys; sys.stdout.flush()
 
-    # ═══ 1. FinMind 4 API 循序呼叫 ═════════════════════════════
-    df_tx   = finmind_get("TaiwanFuturesInstitutionalInvestors", "TX",  s_ymd, e_ymd, token)
-    df_mtx  = finmind_get("TaiwanFuturesInstitutionalInvestors", "MTX", s_ymd, e_ymd, token)
-    df_txo  = finmind_get("TaiwanOptionInstitutionalInvestors",  "TXO", s_ymd, e_ymd, token)
-    df_inst = finmind_get("TaiwanStockTotalInstitutionalInvestors", "", s_ymd, e_ymd, token)
+    # ═══ 1. FinMind 4 API 並行呼叫（彼此獨立 → 省 ~3-4x 關鍵路徑時間）═══
+    # finmind_get 每次自建 requests.Session、無共享狀態、回傳新 DataFrame → 線程安全。
+    from concurrent.futures import ThreadPoolExecutor as _TPE_li
+    _li_specs = [
+        ("TaiwanFuturesInstitutionalInvestors",    "TX"),
+        ("TaiwanFuturesInstitutionalInvestors",    "MTX"),
+        ("TaiwanOptionInstitutionalInvestors",     "TXO"),
+        ("TaiwanStockTotalInstitutionalInvestors", ""),
+    ]
+    with _TPE_li(max_workers=4) as _ex_li:
+        _li_futs = [_ex_li.submit(finmind_get, _ds, _id, s_ymd, e_ymd, token)
+                    for _ds, _id in _li_specs]
+        df_tx, df_mtx, df_txo, df_inst = [_f.result() for _f in _li_futs]
     print(f"[LI-v8] FinMind TX={len(df_tx)} MTX={len(df_mtx)} TXO={len(df_txo)} inst={len(df_inst)}")
     import sys; sys.stdout.flush()
     # FinMind 主來源是否有回資料 → 決定函式尾是否寫快取（避免暫時性失敗被快取黏住）
