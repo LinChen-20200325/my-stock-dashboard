@@ -2031,6 +2031,23 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             # 拐點參考表 → 已移至 Tab5 策略手冊
             st.caption('📖 拐點判斷參考表 → 詳見「策略手冊」Tab')
 
+            # ── 熱錢深度監測（三角交叉：外資 × 匯率 × 背離偵測）─────────────
+            # 深化第 4 條「台幣升貶」訊號的單變量判讀 → 加上外資籌碼的雙變量交叉
+            if _twd_df is not None and not _twd_df.empty:
+                with st.expander("💵 熱錢深度監測 — 三角交叉（外資 × 匯率 × 背離）",
+                                 expanded=False):
+                    st.caption(
+                        "上方「台幣升貶」訊號的深化版：把**外資買賣超**與**台幣匯率**"
+                        "做交叉分析，找出「背離」時刻——例如台幣升值但外資沒買，"
+                        "代表熱錢可能停泊匯市觀望，往往是行情前奏。"
+                    )
+                    try:
+                        from hot_money import render_hot_money_section
+                        render_hot_money_section(
+                            _twd_df, FINMIND_TOKEN, key_prefix="tab_macro_hm")
+                    except Exception as _hme:
+                        st.error(f"熱錢監測渲染失敗：[{type(_hme).__name__}] {_hme}")
+
     elif not cd:
         with _mkt_placeholder.container():
             st.info('📡 請點擊「🚀 一鍵更新全部數據」載入大盤數據')
