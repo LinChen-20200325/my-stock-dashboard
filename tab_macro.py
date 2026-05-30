@@ -2163,12 +2163,18 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     st.caption('💡 真實基金流量為付費資料；本區以各區域／資產代表性 ETF 的相對強弱當「資金流向代理」'
                '（強勢＝資金流入、弱勢＝流出），風險情緒採 252 日滾動 Z-score＋clip(-3,3) 合成。')
     import flow_engine as _fe
-    with st.spinner('🌐 載入全球資金流向…'):
-        _flow_raw = fetch_flow_snapshot()
+    if _load_heavy:
+        with st.spinner('🌐 載入全球資金流向…'):
+            _flow_raw = fetch_flow_snapshot()
+    else:
+        _flow_raw = {}
     _flow_close = {n: _fe.to_close_list(df) for n, df in (_flow_raw or {}).items()}
     _reg_close = {n: _flow_close[n] for n in _fe.REGIONAL_ETFS if _flow_close.get(n)}
     if not _reg_close:
-        st.info('ℹ️ 全球資金流向資料暫時無法取得（yfinance 海外來源可能限流），可稍後重試。')
+        if not _load_heavy:
+            st.info('📡 點擊「🚀 一鍵更新全部數據」載入全球資金流向')
+        else:
+            st.info('ℹ️ 全球資金流向資料暫時無法取得（yfinance 海外來源可能限流），可稍後重試。')
     else:
         # 1. 世界區域股市：標準化走勢 + 流入流出排名
         _reg_df = {n: _flow_raw[n] for n in _reg_close}
@@ -2300,13 +2306,16 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                 st.plotly_chart(sparkline(_twii_ohlc, '台股加權指數', '#58a6ff'),
                                 width='stretch', config={'displayModeBar': False})
     with tw2:
-        try:
-            otc = _fetch_otc_via_finmind(FINMIND_TOKEN)
-            if otc is not None and not otc.empty:
-                st.plotly_chart(sparkline(otc,'櫃買指數 OTC','#3fb950'),
-                                width='stretch',config={'displayModeBar':False})
-        except Exception:
-            pass
+        if not _load_heavy:
+            st.caption('📡 點擊「🚀 一鍵更新全部數據」載入櫃買指數 OTC')
+        else:
+            try:
+                otc = _fetch_otc_via_finmind(FINMIND_TOKEN)
+                if otc is not None and not otc.empty:
+                    st.plotly_chart(sparkline(otc,'櫃買指數 OTC','#3fb950'),
+                                    width='stretch',config={'displayModeBar':False})
+            except Exception:
+                pass
     st.markdown('<hr style="border-color:#21262d;margin:14px 0;">',unsafe_allow_html=True)
     st.markdown('<hr style="border-color:#21262d;margin:8px 0;">', unsafe_allow_html=True)
 
@@ -2877,7 +2886,7 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             )
 
     # ── ADL 即時補救（TWSE 封鎖時自動觸發 FinMind）─────────────────
-    if (df_adl is None or df_adl.empty):
+    if _load_heavy and (df_adl is None or df_adl.empty):
         _adl_ph = st.empty()
         _adl_ph.info('⏳ ADL 資料載入中...')
         try:
@@ -3052,6 +3061,8 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         # [Step 4] 備援：即時抓取漲跌家數 — 委派 tw_macro.fetch_twse_breadth()（走 NAS proxy）
         _adl_today_cols = st.columns(3)
         try:
+            if not _load_heavy:
+                raise RuntimeError('未按一鍵更新，跳過 TWSE breadth 即時抓取')
             from tw_macro import fetch_twse_breadth
             _bd = fetch_twse_breadth()
             _up_v, _dn_v = _bd.get('adv'), _bd.get('dec')
@@ -3242,15 +3253,18 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
     st.divider()
 
     # ── 總經自動警示看板（VIX / CPI / 10Y / DXY / PCR）────────
-    _ma_snap   = fetch_macro_snapshot(
-        session_macro=st.session_state.get('macro_info'),
-        session_li=st.session_state.get('li_latest'),
-        session_m1b2=st.session_state.get('m1b_m2_info'),
-    )
-    _ma_alerts = check_macro_alerts(_ma_snap)
-    st.session_state['macro_alerts'] = _ma_alerts   # 供 Section 九/十共用
-    st.session_state['ma_snap']      = _ma_snap     # 供 tab_stock AI Prompt 引用 VIX/CPI/US10Y/DXY
-    render_macro_alerts(_ma_alerts)
+    if _load_heavy:
+        _ma_snap   = fetch_macro_snapshot(
+            session_macro=st.session_state.get('macro_info'),
+            session_li=st.session_state.get('li_latest'),
+            session_m1b2=st.session_state.get('m1b_m2_info'),
+        )
+        _ma_alerts = check_macro_alerts(_ma_snap)
+        st.session_state['macro_alerts'] = _ma_alerts   # 供 Section 九/十共用
+        st.session_state['ma_snap']      = _ma_snap     # 供 tab_stock AI Prompt 引用 VIX/CPI/US10Y/DXY
+        render_macro_alerts(_ma_alerts)
+    else:
+        st.info('📡 點擊「🚀 一鍵更新全部數據」載入總經警示看板')
 
     _macro_info = st.session_state.get('macro_info') or {}
     _m8_ndc   = _macro_info.get('ndc_signal')
