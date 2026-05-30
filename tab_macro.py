@@ -2136,10 +2136,11 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
             _sql_c = f'10Y殖利率 {_tyx_val:.2f}% → 總經安全，利率溫和股市友善'
             _sql_a = '精選低基期價值股，可適度持有'
         st.markdown(teacher_conclusion('孫慶龍', f'10Y {_tyx_val:.2f}%', _sql_c, _sql_a), unsafe_allow_html=True)
-    ci = st.columns(len(INTL_UNIT))
-    for col,(name,unit) in zip(ci,INTL_UNIT.items()):
-        with col:
-            st.markdown(stat_card(name,intl_s.get(name),unit,name in intl_s),unsafe_allow_html=True)
+    if _load_heavy:
+        ci = st.columns(len(INTL_UNIT))
+        for col,(name,unit) in zip(ci,INTL_UNIT.items()):
+            with col:
+                st.markdown(stat_card(name,intl_s.get(name),unit,name in intl_s),unsafe_allow_html=True)
     idx_d = {k:v for k,v in intl.items() if k in ['道瓊工業 DJI','納斯達克 IXIC','費城半導體 SOX']}
     if idx_d:
         st.plotly_chart(multi_chart(idx_d,'美股三大指數標準化比較',norm=True,height=220),
@@ -2274,10 +2275,11 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         _t2a = ''
         _t2_ind = '台股加權 + 台幣'
     st.markdown(teacher_conclusion('宏爺', _t2_ind, _t2c, _t2a), unsafe_allow_html=True)
-    tc = st.columns(len(TW_UNIT))
-    for col,(name,unit) in zip(tc,TW_UNIT.items()):
-        with col:
-            st.markdown(stat_card(name,tw_s.get(name),unit,name in tw_s),unsafe_allow_html=True)
+    if _load_heavy:
+        tc = st.columns(len(TW_UNIT))
+        for col,(name,unit) in zip(tc,TW_UNIT.items()):
+            with col:
+                st.markdown(stat_card(name,tw_s.get(name),unit,name in tw_s),unsafe_allow_html=True)
     tw1,tw2 = st.columns(2)
     with tw1:
         if '台股加權指數' in tw:
@@ -3118,15 +3120,16 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
         _t6a = ''
         _t6_ind = '費半+美股科技'
     st.markdown(teacher_conclusion('蔡森', _t6_ind, _t6c, _t6a), unsafe_allow_html=True)
-    tc_list = list(TECH_MAP.keys())
-    tr1=st.columns(4)
-    tr2=st.columns(len(tc_list[4:]) if len(tc_list)>4 else 1)
-    for i,(col,name) in enumerate(zip(tr1,tc_list[:4])):
-        with col:
-            st.markdown(stat_card(name,tech_s.get(name),'USD',name in tech_s),unsafe_allow_html=True)
-    for i,(col,name) in enumerate(zip(tr2,tc_list[4:])):
-        with col:
-            st.markdown(stat_card(name,tech_s.get(name),'USD',name in tech_s),unsafe_allow_html=True)
+    if _load_heavy:
+        tc_list = list(TECH_MAP.keys())
+        tr1=st.columns(4)
+        tr2=st.columns(len(tc_list[4:]) if len(tc_list)>4 else 1)
+        for i,(col,name) in enumerate(zip(tr1,tc_list[:4])):
+            with col:
+                st.markdown(stat_card(name,tech_s.get(name),'USD',name in tech_s),unsafe_allow_html=True)
+        for i,(col,name) in enumerate(zip(tr2,tc_list[4:])):
+            with col:
+                st.markdown(stat_card(name,tech_s.get(name),'USD',name in tech_s),unsafe_allow_html=True)
     if tech:
         st.plotly_chart(multi_chart(tech,'科技巨頭標準化比較',norm=True,height=250),
                         width='stretch',config={'displayModeBar':False})
