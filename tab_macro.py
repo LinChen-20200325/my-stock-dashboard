@@ -671,6 +671,14 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         print(f'[FinMind-Inst] status={_ji.get("status")} rows={len(_ji.get("data",[]))}')
                         if _ji.get('status')==200 and _ji.get('data'):
                             _df_i = pd.DataFrame(_ji['data'])
+                            # [DEBUG-INST-FORMAT] FinMind 回 30 rows 但 parsing 完是 {} → 印出 columns + name 唯一值 + 第一筆 row
+                            print(f"[*] FinMind-Inst-debug [?] columns: {list(_df_i.columns)}")
+                            _name_col = 'name' if 'name' in _df_i.columns else None
+                            if _name_col:
+                                print(f"[*] FinMind-Inst-debug [?] unique names ({type(_df_i[_name_col].iloc[0]).__name__}): {repr(_df_i[_name_col].unique().tolist())[:300]}")
+                            else:
+                                print(f"[*] FinMind-Inst-debug [!] 'name' 欄缺，可能改用別的 key")
+                            print(f"[*] FinMind-Inst-debug [>] 第一筆 row: {repr(_df_i.iloc[0].to_dict())[:300]}")
                             _ld_i = _df_i['date'].max()
                             _df_i = _df_i[_df_i['date']==_ld_i]
                             _df_i['buy']  = pd.to_numeric(_df_i.get('buy',  0), errors='coerce').fillna(0)
