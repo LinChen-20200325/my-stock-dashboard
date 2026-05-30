@@ -529,6 +529,91 @@ def is_active_etf(ticker: str) -> bool:
     return False              # 純數字 = 被動追蹤指數
 
 
+def _fetch_yuanta_active_etf_meta(ticker: str) -> dict | None:
+    """元大投信官網 fallback — 抓主動式 ETF 經理人 / 費用率 / NAV。
+
+    為何需要：MoneyDJ Basic0001/0006/0011 / SITCA 對主動式 ETF（00980A 等）
+    無經理人欄位，元大投信官網才是源頭。多 URL 嘗試，HTML regex 解析。
+
+    Returns
+    -------
+    dict | None
+        成功：{
+            'manager':   str | None,    經理人姓名
+            'expense':   float | None,  總費用率（小數，0.0085 = 0.85%）
+            'nav_latest': float | None, 最近一日 NAV
+            'nav_date':   str | None,   NAV 日期 YYYY-MM-DD
+            'source':     'yuanta-official',
+            'url':        str,
+        }
+        失敗：None
+    """
+    import re as _re_y
+    _code = (ticker or '').replace('.TW', '').replace('.TWO', '').strip().upper()
+    if not _code or not is_active_etf(ticker):
+        return None
+    _urls = [
+        f'https://www.yuantaetfs.com/product/detail/{_code}/profile',
+        f'https://www.yuantaetfs.com/product/detail/{_code}',
+        f'https://www.yuantaetfs.com/RtnPercent/Detail/{_code}',
+    ]
+    for _url in _urls:
+        _txt = None
+        try:
+            from proxy_helper import fetch_url as _fu_y
+            _r = _fu_y(_url, timeout=12, attempts=2)
+            if _r is not None and _r.status_code == 200 and len(_r.text or '') > 500:
+                _r.encoding = 'utf-8'
+                _txt = _r.text
+        except Exception as _ey:
+            print(f'[Yuanta/{_code}] proxy 異常 {_url}: {type(_ey).__name__}: {_ey}')
+            continue
+        if not _txt:
+            continue
+        _out: dict = {'manager': None, 'expense': None,
+                      'nav_latest': None, 'nav_date': None,
+                      'source': 'yuanta-official', 'url': _url}
+        _m = _re_y.search(
+            r'(?:基金)?經理人[\s\:：]*([一-鿿]{2,8}(?:\s*[\/、，]\s*[一-鿿]{2,8})*)',
+            _txt,
+        )
+        if _m:
+            _out['manager'] = _m.group(1).strip().replace(' ', '')
+        _e = _re_y.search(
+            r'(?:總費用率|經理費[\s\S]{0,80}?保管費[\s\S]{0,40}?)[\s\:：]{0,5}(\d+\.\d{1,3})\s*%',
+            _txt,
+        )
+        if _e:
+            try:
+                _out['expense'] = float(_e.group(1)) / 100.0
+            except ValueError:
+                pass
+        _n = _re_y.search(
+            r'(?:淨值|單位淨值|NAV)[\s\:：]*(\d+\.\d{2,4})',
+            _txt,
+        )
+        if _n:
+            try:
+                _out['nav_latest'] = float(_n.group(1))
+            except ValueError:
+                pass
+        _nd = _re_y.search(r'(\d{4})[/\-\.](\d{1,2})[/\-\.](\d{1,2})', _txt)
+        if _nd:
+            try:
+                from datetime import date as _date_y
+                _y, _mo, _d = (int(_nd.group(i)) for i in (1, 2, 3))
+                _out['nav_date'] = _date_y(_y, _mo, _d).isoformat()
+            except (ValueError, OverflowError):
+                pass
+        if any(_out.get(k) for k in ('manager', 'expense', 'nav_latest')):
+            print(f'[Yuanta/{_code}] ✅ via {_url[:60]}... '
+                  f'manager={_out.get("manager")} '
+                  f'expense={_out.get("expense")} '
+                  f'nav={_out.get("nav_latest")}')
+            return _out
+    return None
+
+
 @st.cache_data(ttl=604800, show_spinner=False)
 def fetch_etf_manager(ticker: str):
     """從 MoneyDJ ETF 抓「現任經理人 + 任期起始日」。
@@ -649,6 +734,18 @@ def fetch_etf_manager(ticker: str):
         else:
             _err_trace.append('sitca: 多 URL/多 column 比對全失敗')
 
+    # ── 5. Yuanta 官網 fallback — 主動式 ETF 專屬（v1.1）─────────────
+    _yu = _fetch_yuanta_active_etf_meta(_t)
+    if _yu and _yu.get('manager'):
+        print(f'[Yuanta/manager] ✅ {_t} = {_yu["manager"]}')
+        return {'name': _yu['manager'], 'since': None, 'tenure_days': None,
+                'source': 'yuanta-official'}
+    elif _yu is not None:
+        _err_trace.append('yuanta: 200 但 regex 無經理人')
+    else:
+        if is_active_etf(_t):
+            _err_trace.append('yuanta: 3 URL 全 fail')
+
     # 全部失敗 — 寫 session_state 給診斷面板讀
     try:
         if st is not None:
@@ -721,16 +818,18 @@ def _fetch_sitca_manager(ticker: str):
 
 
 def get_etf_expense_ratio_safe(ticker: str):
-    """安全讀取 ETF 費用率：SITCA → MoneyDJ → yfinance 三段備援；缺失回 None 不崩潰"""
-    # 1. 台股 ETF（純數字代號）優先走 SITCA（投信投顧公會官方），yfinance 對 .TW 票常 stale
+    """安全讀取 ETF 費用率：SITCA → MoneyDJ → Yuanta → yfinance 四段備援；缺失回 None"""
     _sit = fetch_sitca_expense_ratio(ticker)
     if _sit is not None:
         return _sit
-    # 2. MoneyDJ Basic0004（私募/已下市/SITCA 未收錄的台股 ETF 兜底）
     _mdj = fetch_moneydj_expense_ratio(ticker)
     if _mdj is not None:
         return _mdj
-    # 3. yfinance.info（海外 ETF 主要來源；台股 ETF 末段保險）
+    # v1.1：主動式 ETF 專屬，SITCA + MDJ 都失敗時補位
+    if is_active_etf(ticker):
+        _yu = _fetch_yuanta_active_etf_meta(ticker)
+        if _yu and _yu.get('expense') is not None:
+            return _yu['expense']
     try:
         info = fetch_etf_info(ticker)
         return (info.get('annualReportExpenseRatio')

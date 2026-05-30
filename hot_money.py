@@ -168,6 +168,53 @@ def fetch_foreign_flow_series(days: int, token: str) -> tuple[pd.DataFrame, str]
 
 
 # ────────────────────────────────────────────────────────────────────────
+# v1.2 純資料層 helper：取最新熱錢狀態，無 streamlit 渲染（給 AI prompt 用）
+# ────────────────────────────────────────────────────────────────────────
+def get_latest_hot_money_state(twd_df: pd.DataFrame, token: str = "",
+                                days: int = 180, window: int = 5,
+                                flow_thr: float = 50.0,
+                                fx_thr: float = 0.5) -> dict | None:
+    """純資料層：取最新熱錢三角交叉判讀，不依賴 streamlit。
+
+    為什麼存在：tab_macro 的 AI 首席總經分析師 prompt 需要熱錢摘要，
+    但 `render_hot_money_section` 內含 st.markdown / st.spinner 等渲染，
+    無法直接複用。本 helper 抽出純計算邏輯。
+
+    Returns:
+        dict | None:
+            {
+              'state':           '溫和流出' / '同步流入' / ...,
+              'interpretation':  該 state 的白話解讀（截短）,
+              'foreign_net_yi':  最新外資買賣超（億元）,
+              'roll_flow':       近 window 日累計外資（億元）,
+              'usdtwd':          最新 USD/TWD,
+              'roll_apprec':     近 window 日台幣累計升貶（%）,
+              'date':            'YYYY-MM-DD',
+            }
+            twd_df / FinMind 失敗回 None。
+    """
+    fx_df = _twd_df_to_series(twd_df)
+    if fx_df.empty:
+        return None
+    flow_df, _err = fetch_foreign_flow_series(days, token)
+    if flow_df.empty:
+        return None
+    sig = build_signals(flow_df, fx_df, window, flow_thr, fx_thr)
+    if sig.empty:
+        return None
+    latest = sig.iloc[-1]
+    return {
+        'state':           str(latest['state']),
+        'interpretation':  str(latest.get('interpretation', '')),
+        'foreign_net_yi':  float(latest['foreign_net_yi']),
+        'roll_flow':       float(latest['roll_flow']),
+        'usdtwd':          float(latest['usdtwd']),
+        'roll_apprec':     float(latest['roll_apprec']),
+        'date':            str(pd.Timestamp(latest['date']).date()),
+    }
+
+
+# ────────────────────────────────────────────────────────────────────────
 # UI render：在 caller expander 內顯示完整三角交叉視圖
 # ────────────────────────────────────────────────────────────────────────
 def render_hot_money_section(twd_df: pd.DataFrame, token: str = "",
@@ -255,17 +302,35 @@ def render_hot_money_section(twd_df: pd.DataFrame, token: str = "",
                 x="roll_flow:Q", y="roll_apprec:Q")
         st.altair_chart((pts + v + h + last).properties(height=360),
                           use_container_width=True)
-    except Exception:
-        st.scatter_chart(plot, x="roll_flow", y="roll_apprec", color="state", height=360)
+    except Exception as _ce:
+        # 預防性硬化（對齊 fund v18.240）：altair 失敗時不再 fallback
+        # st.scatter_chart（底層仍 altair 會再炸），改純表格降級
+        st.caption(f"⚠️ 象限圖渲染失敗（{type(_ce).__name__}），改顯示原始數據表：")
+        _t = plot.tail(20)[["date", "roll_flow", "roll_apprec", "state"]].copy()
+        _t["date"] = pd.to_datetime(_t["date"]).dt.date
+        st.dataframe(
+            _t.rename(columns={"date": "日期", "roll_flow": f"近{window}日外資(億)",
+                                  "roll_apprec": f"近{window}日升貶(%)", "state": "狀態"}),
+            use_container_width=True, hide_index=True, height=320)
 
-    # 時序圖
+    # 時序圖（雙保險：bar/line 底層也是 altair → 一併防呆）
     cc_a, cc_b = st.columns(2)
     with cc_a:
         st.markdown("**外資每日買賣超（億元）**")
-        st.bar_chart(sig.set_index("date")["foreign_net_yi"], height=220)
+        try:
+            st.bar_chart(sig.set_index("date")["foreign_net_yi"], height=220)
+        except Exception as _be:
+            st.caption(f"⚠️ bar chart 失敗（{type(_be).__name__}），改顯示尾段數據：")
+            st.dataframe(sig[["date", "foreign_net_yi"]].tail(10),
+                          use_container_width=True, hide_index=True)
     with cc_b:
         st.markdown("**美元/台幣（下降＝台幣升值）**")
-        st.line_chart(sig.set_index("date")["usdtwd"], height=220)
+        try:
+            st.line_chart(sig.set_index("date")["usdtwd"], height=220)
+        except Exception as _le:
+            st.caption(f"⚠️ line chart 失敗（{type(_le).__name__}），改顯示尾段數據：")
+            st.dataframe(sig[["date", "usdtwd"]].tail(10),
+                          use_container_width=True, hide_index=True)
 
     # 背離事件清單
     st.markdown("**⚠️ 近期背離事件**")

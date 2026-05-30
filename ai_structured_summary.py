@@ -41,11 +41,15 @@ def build_structured_summary_prompt(subject_title: str,
         「一句話總結」要回答的問題；None 時用通用問法。
     """
     _blocks = []
+    _section_names: list[str] = []
     for _i, _s in enumerate(sections, 1):
         _name = (_s.get('name') or f'第{_i}節').strip()
         _data = (str(_s.get('data') or '')).strip() or '（這節目前沒有資料）'
         _blocks.append(f'【第{_i}節：{_name}】\n{_data}')
+        _section_names.append(f'第{_i}節：{_name}')
     _data_all = '\n\n'.join(_blocks) if _blocks else '（沒有提供任何章節資料）'
+    _n_sections = len(sections)
+    _section_list_str = '\n'.join(f'  {i+1}. {n}' for i, n in enumerate(_section_names))
 
     _news = (news_text or '').strip() or '（目前沒有抓到相關的即時新聞）'
     _overall = (overall_question or
@@ -66,11 +70,16 @@ def build_structured_summary_prompt(subject_title: str,
 【輸出格式 — 用 Markdown，務必逐節對應】
 ## 🧾 {subject_title}｜白話總整理
 
-接著「每一節」都用這個格式輸出（節名沿用上面的章節名稱）：
+⚠️ **硬規定（缺一不可）**：以下 {_n_sections} 個章節**全部都要輸出**，順序與名稱完全照下方清單，
+缺資料的章節也必須保留標題，並用一句話說明「為什麼缺資料 / 看不出來」，不准跳過、不准合併：
+
+{_section_list_str}
+
+每節都用這個格式輸出（節名沿用上面的章節名稱）：
 ### 第N節：<章節名稱>
 - 用 2~3 句白話講：這節在看什麼、現在狀況是好是壞、要開心還是擔心、要注意什麼。
 
-全部章節講完後，再加兩段：
+全部 {_n_sections} 節講完後，再加兩段：
 ### 📰 最近發生了什麼事（時事）
 - 從上面新聞挑「跟這個標的真的有關」的 1~3 件，白話講「發生什麼、對它是好消息還壞消息」。
   若沒抓到新聞，就老實說「最近沒抓到相關新聞」，不要硬掰。

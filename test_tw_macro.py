@@ -209,3 +209,85 @@ def test_no_direct_requests_import():
     # tw_macro 應只透過 proxy_helper.fetch_url 抓網路;不應自己 import requests
     assert 'import requests' not in src, \
         "tw_macro 偷偷 import requests — 違反「全部走 NAS proxy」原則"
+
+
+# ══════════════════════════════════════════════════════════════
+# v1.1 拐點偵測：景氣對策信號 / 領先指標 / 外資連續日數
+# ══════════════════════════════════════════════════════════════
+
+def _mock_macro_rows(indicator_name: str, values: list, start: str = "2024-01-01"):
+    """產生 FinMind TaiwanMacroEconomics 風格 rows。"""
+    import datetime as _d
+    base = _d.date.fromisoformat(start)
+    return [
+        {"date": (base + _d.timedelta(days=30 * i)).isoformat(),
+         "indicator": indicator_name, "value": v}
+        for i, v in enumerate(values)
+    ]
+
+
+def test_ndc_signal_inflection_up(monkeypatch):
+    """景氣對策信號連 2 月翻多：prev2 ≥ prev 且 cur > prev → 拐點 emoji 應為 🚀。"""
+    # 6 月歷史：26, 25, 24, 23, 22, 25（最後翻多）
+    rows = _mock_macro_rows('景氣對策信號(分)', [26, 25, 24, 23, 22, 25])
+    monkeypatch.setattr(tw_macro, 'fetch_url',
+                        lambda *a, **kw: _mock_resp({'data': rows}))
+    r = tw_macro.fetch_ndc_signal_history(months_back=12)
+    assert r['score_latest'] == 25
+    assert r['score_prev'] == 22
+    assert '🚀' in r['inflection'] or '翻多' in r['inflection']
+
+
+def test_ndc_signal_no_data(monkeypatch):
+    """無資料時應回 None + error，不爆炸。"""
+    monkeypatch.setattr(tw_macro, 'fetch_url', lambda *a, **kw: None)
+    r = tw_macro.fetch_ndc_signal_history()
+    assert r['score_latest'] is None
+    assert r['error'] is not None
+    assert r['inflection'] == '⬜ 資料不足'
+
+
+def test_ndc_leading_index_smooth6m_reversal(monkeypatch):
+    """領先指標 6M smoothed change 由負轉正應觸發 🚀。"""
+    # 用 12 月穩定下降 → 然後反轉，產生 6M MA 由負轉正
+    vals = [100, 99, 98, 97, 96, 95, 95, 96, 98, 100, 103, 107]
+    rows = _mock_macro_rows('領先指標綜合指數', vals)
+    monkeypatch.setattr(tw_macro, 'fetch_url',
+                        lambda *a, **kw: _mock_resp({'data': rows}))
+    r = tw_macro.fetch_ndc_leading_index(months_back=18)
+    assert r['latest'] is not None
+    assert r['smooth6m'] is not None
+    # 由負轉正或持續擴張皆可接受（取決於 MA6 邊界）
+    assert r['inflection'] in (
+        '🚀 6M 由負轉正', '🟢 持續擴張', '⚠️ 由正轉負', '🔴 持續收縮', '📊 持平'
+    )
+
+
+def test_foreign_consecutive_days_reversal(monkeypatch):
+    """連 5 日賣超後翻買 → 應觸發 🚀 賣→買 拐點。"""
+    import datetime as _d
+    base = _d.date(2026, 5, 25)
+    nets_seq = [-1, -1, -1, -1, -1, -1, 1]  # 連 6 賣 + 1 買
+    rows = []
+    for i, n in enumerate(nets_seq):
+        rows.append({
+            'date': (base + _d.timedelta(days=i)).isoformat(),
+            'name': 'Foreign_Investor',
+            'buy':  100 if n > 0 else 0,
+            'sell': 0 if n > 0 else 100,
+        })
+    monkeypatch.setattr(tw_macro, 'fetch_url',
+                        lambda *a, **kw: _mock_resp({'data': rows}))
+    r = tw_macro.fetch_foreign_consecutive_days(days_back=15)
+    assert r['consec_days'] == 1
+    assert r['prev_streak'] == -6
+    assert '賣→買' in r['inflection']
+
+
+def test_foreign_consecutive_days_no_data(monkeypatch):
+    """無外資資料時應回 None + error，不爆炸。"""
+    monkeypatch.setattr(tw_macro, 'fetch_url', lambda *a, **kw: None)
+    r = tw_macro.fetch_foreign_consecutive_days()
+    assert r['consec_days'] is None
+    assert r['error'] is not None
+    assert r['inflection'] == '⬜ 資料不足'

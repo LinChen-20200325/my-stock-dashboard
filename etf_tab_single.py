@@ -579,15 +579,21 @@ def render_etf_single(gemini_fn=None):
     # 末位字母後綴允許：A=Active 主動式 / L=Leveraged / R=Reverse / B=Bond / U/F=Futures
     import re as _re_etf
     _is_overseas = not bool(_re_etf.match(r'^\d{4,6}[A-Z]?\.(TW|TWO)$', ticker))
-    # 私募/特殊 ETF 判別：台股 ETF 但 AUM + 費用率 + NAV 三源皆空 → 主流資料源未涵蓋
     _nav_value = (prem or {}).get('nav')
     _likely_private = ((not _is_overseas) and (not aum)
                       and (not expense) and (_nav_value is None))
-    _err_expense = None if (expense or _is_overseas or _likely_private) else (
+    # v1.1：主動式 ETF Yuanta fallback 仍抓不到時 → 視為「公開資料受限」
+    try:
+        from etf_fetch import is_active_etf as _is_act_etf
+        _is_active = _is_act_etf(ticker)
+    except ImportError:
+        _is_active = False
+    _restricted = _likely_private or _is_active
+    _err_expense = None if (expense or _is_overseas or _restricted) else (
         'SITCA + MoneyDJ + yfinance.info[expenseRatio] 3 源全失敗'
         '（私募 / 已下市可能）'
     )
-    _err_nav = None if (_nav_value is not None or _is_overseas or _likely_private) else (
+    _err_nav = None if (_nav_value is not None or _is_overseas or _restricted) else (
         'FinMind ETF NAV + goodinfo + TWSE OpenAPI + MoneyDJ + yfinance 5 源全失敗'
     )
     st.session_state['etf_single_data'] = {
@@ -609,6 +615,7 @@ def render_etf_single(gemini_fn=None):
                            and _ma20 < _ma60_v),
         '_is_overseas': _is_overseas,
         '_likely_private': _likely_private,
+        '_is_active_etf': _is_active,
         '_err_expense': _err_expense,
         '_err_nav':     _err_nav,
     }

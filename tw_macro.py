@@ -311,6 +311,283 @@ def fetch_cbc_m1b_m2() -> dict:
 
 
 # ══════════════════════════════════════════════════════════════
+# v1.1 拐點偵測資料源（景氣對策信號 / 領先指標 / 外資連續日數）
+# ══════════════════════════════════════════════════════════════
+
+# FinMind TaiwanMacroEconomics 指標名（中央銀行/國發會公開資料）
+_NDC_SIGNAL_KEYS  = ('景氣對策信號(分)', '景氣對策信號')
+_NDC_LI_KEYS      = ('領先指標綜合指數', '領先指標', '領先指標(綜合指數)')
+
+
+def _finmind_macro_series(indicator_keys: tuple, months_back: int = 18,
+                          token: str = "") -> Optional[pd.DataFrame]:
+    """通用：抓 FinMind TaiwanMacroEconomics 指定指標的月頻歷史。
+    回傳 DataFrame[date, value] 由舊到新；找不到回 None。"""
+    today    = _dt.date.today()
+    end_dt   = today.strftime("%Y-%m-%d")
+    # months_back 月轉日（多抓一倍緩衝）
+    start_dt = (today - _dt.timedelta(days=int(months_back * 31))).strftime("%Y-%m-%d")
+    params: dict = {
+        'dataset':    'TaiwanMacroEconomics',
+        'start_date': start_dt,
+        'end_date':   end_dt,
+    }
+    if token:
+        params['token'] = token
+    r = fetch_url(FINMIND_BASE, params=params, timeout=15)
+    if r is None:
+        return None
+    try:
+        rows = r.json().get('data', [])
+    except Exception:
+        return None
+    if not rows:
+        return None
+    df = pd.DataFrame(rows)
+    # FinMind 欄位名可能是 indicator / name / metric
+    cand_col = next((c for c in ('indicator', 'name', 'metric')
+                     if c in df.columns), None)
+    val_col  = next((c for c in ('value', 'data') if c in df.columns), None)
+    if cand_col is None or val_col is None or 'date' not in df.columns:
+        return None
+    mask = df[cand_col].astype(str).isin(indicator_keys)
+    if not mask.any():
+        # 用 contains 兜底
+        mask = df[cand_col].astype(str).apply(
+            lambda x: any(k in x for k in indicator_keys))
+    if not mask.any():
+        return None
+    sub = df.loc[mask, ['date', val_col]].copy()
+    sub.columns = ['date', 'value']
+    sub['value'] = pd.to_numeric(sub['value'], errors='coerce')
+    sub = sub.dropna().sort_values('date').reset_index(drop=True)
+    if sub.empty:
+        return None
+    return sub
+
+
+def fetch_ndc_signal_history(months_back: int = 12,
+                             token: str = "") -> dict:
+    """抓景氣對策信號分數歷史（月頻），偵測連 2 月反轉拐點。
+
+    Returns
+    -------
+    dict
+        {
+          'score_latest': int | None,    最新月份分數（9~45）
+          'score_prev':   int | None,    上月分數
+          'score_prev2':  int | None,    上上月分數
+          'trend':        list[int],     近 6 月分數
+          'inflection':   str,           '🚀 連2月翻多' / '⚠️ 連2月翻空' /
+                                          '🟢 持續上升' / '🔴 持續下降' / '📊 持平' /
+                                          '⬜ 資料不足'
+          'date_latest':  str,
+          'source':       'FinMind' | None,
+          'error':        str | None,
+        }
+    """
+    result: dict = {
+        'score_latest': None, 'score_prev': None, 'score_prev2': None,
+        'trend': [], 'inflection': '⬜ 資料不足',
+        'date_latest': '', 'source': None, 'error': None,
+    }
+    sub = _finmind_macro_series(_NDC_SIGNAL_KEYS,
+                                months_back=months_back, token=token)
+    if sub is None or len(sub) < 3:
+        result['error'] = 'FinMind TaiwanMacroEconomics 無景氣對策信號資料'
+        return result
+    vals = [int(round(v)) for v in sub['value'].tail(6).tolist()]
+    cur, prev = vals[-1], vals[-2]
+    prev2 = vals[-3] if len(vals) >= 3 else None
+    result['score_latest'] = cur
+    result['score_prev']   = prev
+    result['score_prev2']  = prev2
+    result['trend']        = vals
+    result['date_latest']  = str(sub['date'].iloc[-1])[:10]
+    result['source']       = 'FinMind'
+    # 拐點判斷：連 2 月同向反轉
+    if prev2 is not None:
+        # 連 2 月由跌轉升（prev2 ≥ prev 且 prev < cur 且 cur > prev）
+        if prev2 >= prev and cur > prev:
+            result['inflection'] = '🚀 連2月翻多'
+        elif prev2 <= prev and cur < prev:
+            result['inflection'] = '⚠️ 連2月翻空'
+        elif cur > prev > prev2:
+            result['inflection'] = '🟢 連3月上升'
+        elif cur < prev < prev2:
+            result['inflection'] = '🔴 連3月下降'
+        else:
+            result['inflection'] = '📊 震盪持平'
+    return result
+
+
+def fetch_ndc_leading_index(months_back: int = 18,
+                            token: str = "") -> dict:
+    """抓領先指標綜合指數歷史，計算 6M smoothed 變化率與翻揚拐點。
+
+    Returns
+    -------
+    dict
+        {
+          'latest':   float | None,
+          'prev':     float | None,
+          'mom':      float | None,    最新月 MoM%
+          'smooth6m': float | None,    最新 6M smoothed change（%）
+          'prev_s6m': float | None,    前期 6M smoothed change
+          'inflection': str,           '🚀 6M 由負轉正' / '🟢 持續擴張' /
+                                       '🔴 持續收縮' / '⚠️ 由正轉負' / '⬜ 資料不足'
+          'trend':    list[float],     近 8 月 6M smoothed change
+          'date_latest': str,
+          'source':   'FinMind' | None,
+          'error':    str | None,
+        }
+    """
+    result: dict = {
+        'latest': None, 'prev': None, 'mom': None,
+        'smooth6m': None, 'prev_s6m': None,
+        'inflection': '⬜ 資料不足', 'trend': [],
+        'date_latest': '', 'source': None, 'error': None,
+    }
+    sub = _finmind_macro_series(_NDC_LI_KEYS,
+                                months_back=months_back, token=token)
+    if sub is None or len(sub) < 8:
+        result['error'] = 'FinMind TaiwanMacroEconomics 無領先指標歷史'
+        return result
+    s = sub.set_index('date')['value'].astype(float)
+    cur = float(s.iloc[-1]); prev = float(s.iloc[-2])
+    # 6M smoothed change：用 6 月移動平均的月變化率
+    ma6 = s.rolling(6).mean().dropna()
+    if len(ma6) < 2:
+        result['error'] = '6M MA 樣本不足'
+        return result
+    s6m = ma6.pct_change().dropna() * 100  # 月變化率 %
+    if len(s6m) < 2:
+        result['error'] = '6M smoothed change 樣本不足'
+        return result
+    cur_s, prev_s = float(s6m.iloc[-1]), float(s6m.iloc[-2])
+    trend = [round(v, 2) for v in s6m.tail(8).tolist()]
+    result.update({
+        'latest':   round(cur, 2),
+        'prev':     round(prev, 2),
+        'mom':      round((cur - prev) / prev * 100, 2) if prev else None,
+        'smooth6m': round(cur_s, 2),
+        'prev_s6m': round(prev_s, 2),
+        'trend':    trend,
+        'date_latest': str(s.index[-1])[:10],
+        'source':   'FinMind',
+    })
+    if cur_s > 0 and prev_s <= 0:
+        result['inflection'] = '🚀 6M 由負轉正'
+    elif cur_s > 0:
+        result['inflection'] = '🟢 持續擴張'
+    elif cur_s < 0 and prev_s >= 0:
+        result['inflection'] = '⚠️ 由正轉負'
+    elif cur_s < 0:
+        result['inflection'] = '🔴 持續收縮'
+    else:
+        result['inflection'] = '📊 持平'
+    return result
+
+
+def fetch_foreign_consecutive_days(days_back: int = 30,
+                                   token: str = "") -> dict:
+    """抓外資最近 N 日買賣超，計算連續同向日數與反轉拐點。
+
+    Returns
+    -------
+    dict
+        {
+          'consec_days': int | None,    當前連續日數（+ 連買、- 連賣）
+          'reversed':    bool,          昨日 vs 今日是否反轉
+          'today_net':   int | None,    今日淨額（元）
+          'prev_streak': int | None,    上一段連續日數（+ / -）
+          'inflection':  str,           '🚀 連5賣→買' / '⚠️ 連5買→賣' /
+                                        '🟢 連N買' / '🔴 連N賣' / '📊 震盪' /
+                                        '⬜ 資料不足'
+          'date_latest': str,
+          'source':      'FinMind' | None,
+          'error':       str | None,
+        }
+    """
+    result: dict = {
+        'consec_days': None, 'reversed': False, 'today_net': None,
+        'prev_streak': None, 'inflection': '⬜ 資料不足',
+        'date_latest': '', 'source': None, 'error': None,
+    }
+    today    = _dt.date.today()
+    end_dt   = today.strftime("%Y-%m-%d")
+    start_dt = (today - _dt.timedelta(days=days_back)).strftime("%Y-%m-%d")
+    params: dict = {
+        'dataset':    'TaiwanStockTotalInstitutionalInvestors',
+        'start_date': start_dt,
+        'end_date':   end_dt,
+    }
+    if token:
+        params['token'] = token
+    r = fetch_url(FINMIND_BASE, params=params, timeout=15)
+    if r is None:
+        result['error'] = 'FinMind 抓取失敗'
+        return result
+    try:
+        rows = r.json().get('data', [])
+    except Exception as e:
+        result['error'] = f'FinMind JSON 解析失敗: {e}'
+        return result
+    fi_rows = [x for x in rows if x.get('name') == 'Foreign_Investor']
+    if not fi_rows:
+        result['error'] = 'FinMind 無 Foreign_Investor 資料'
+        return result
+    df = pd.DataFrame(fi_rows)
+    df['net'] = pd.to_numeric(df.get('buy', 0), errors='coerce').fillna(0) - \
+                pd.to_numeric(df.get('sell', 0), errors='coerce').fillna(0)
+    df = df.sort_values('date').reset_index(drop=True)
+    if len(df) < 2:
+        result['error'] = '外資資料筆數不足'
+        return result
+    nets = df['net'].astype(float).tolist()
+    # 連續日數計算：從尾巴往前數同號
+    last_sign = 1 if nets[-1] > 0 else (-1 if nets[-1] < 0 else 0)
+    consec = 0
+    for v in reversed(nets):
+        sign = 1 if v > 0 else (-1 if v < 0 else 0)
+        if sign == last_sign and sign != 0:
+            consec += 1
+        else:
+            break
+    # 上一段連續日數（同樣由反方向掃描）
+    prev_streak = 0
+    if consec < len(nets):
+        before = nets[:len(nets) - consec]
+        if before:
+            prev_sign = 1 if before[-1] > 0 else (-1 if before[-1] < 0 else 0)
+            for v in reversed(before):
+                sign = 1 if v > 0 else (-1 if v < 0 else 0)
+                if sign == prev_sign and sign != 0:
+                    prev_streak += 1
+                else:
+                    break
+            prev_streak = prev_streak * prev_sign  # 帶號（- 表連賣）
+    result['consec_days'] = consec * last_sign
+    result['today_net']   = int(nets[-1])
+    result['prev_streak'] = prev_streak
+    result['date_latest'] = str(df['date'].iloc[-1])[:10]
+    result['source']      = 'FinMind'
+    result['reversed']    = (consec == 1 and prev_streak * last_sign < -5)
+    # 拐點判斷
+    if consec == 1 and prev_streak <= -5:
+        result['inflection'] = f'🚀 連{-prev_streak}賣→買（拐點）'
+    elif consec == 1 and prev_streak >= 5:
+        result['inflection'] = f'⚠️ 連{prev_streak}買→賣（拐點）'
+    elif consec >= 5 and last_sign > 0:
+        result['inflection'] = f'🟢 連{consec}日買超'
+    elif consec >= 5 and last_sign < 0:
+        result['inflection'] = f'🔴 連{consec}日賣超'
+    else:
+        result['inflection'] = '📊 震盪'
+    return result
+
+
+# ══════════════════════════════════════════════════════════════
 # 整合 API — 一次抓回三大台股總經因子
 # ══════════════════════════════════════════════════════════════
 

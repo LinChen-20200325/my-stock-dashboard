@@ -17,7 +17,7 @@
 ## §4 鋼鐵自省與交付 (Audit & Delivery)
 - **強制驗證機制**：不准說 Done 就跑。修改後必須通過 Type check 與 Lint。完成後輸出簡短報告：[邏輯]、[邊界]、[效能]、[Debug]。
 - **環境與效能**：限用 `.py` 腳本（禁 `.ipynb`），維護 `requirements.txt`。必須確保 `st.cache_data` 的正確使用以優化 Streamlit 效能。
-- **PR 規範**：完成變更後**不必每次詢問**，直接執行標準收尾流程：開 PR → **squash-merge 進 `main`** → 同步 `STATE.md`（及 `ARCHITECTURE.md`/`SPEC.md` 若有結構變動）。STATE.md 條目可與程式碼放同一 PR（以 PR 編號標示），力求單一 PR 完成。
+- **PR 規範**：使用 `gh pr create` 建立請求後**自動 squash-merge + delete branch**（執行 `gh pr merge <PR號碼> --squash --delete-branch`），不必每次徵求同意。
 
 ## §5 卡關救援 (Anti-Loop Protocol)
 - 針對同一個報錯，若連續重試 2 次未果，**立即停機**。

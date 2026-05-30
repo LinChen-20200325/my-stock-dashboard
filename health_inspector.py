@@ -986,36 +986,43 @@ def render_data_health_raw():
             # AUM / Beta / 費用率：拆成個別行各自檢查
             _is_oversea_etf = bool(_e1.get('_is_overseas'))
             _is_private_etf = bool(_e1.get('_likely_private'))
+            _is_active_etf_main = bool(_e1.get('_is_active_etf'))
             _oversea_msg = '海外 ETF 不適用（本系統 5 源僅限台灣 ETF）'
             _private_msg = '私募/特殊 ETF — AUM、費用率、NAV 主流資料源皆未揭露'
-            _aum_na = _is_private_etf and not _e1.get('aum')
+            _active_msg  = '主動式 ETF — 公開資料受限（投信官網有揭露但格式不一致，本系統暫無法穩定抓取）'
+            # v1.1：主動式 ETF 失敗併入 na（黃燈），不再算入紅燈
+            _restricted = _is_private_etf or _is_active_etf_main
+            _aum_na = _restricted and not _e1.get('aum')
             rows.append(_row('ETF 規模 AUM',
                              str(_dt_r.date.today()) if _e1.get('aum') else None, 'daily',
-                             error_msg=(_private_msg if _aum_na else None),
+                             error_msg=((_active_msg if _is_active_etf_main else _private_msg)
+                                        if _aum_na else None),
                              probe_status=('na' if _aum_na else None),
                              source='yfinance', endpoint='.info[totalAssets]', proxy=False))
             rows.append(_row('ETF Beta',
                              str(_dt_r.date.today()) if _e1.get('beta') is not None else None,
                              'daily',
                              source='yfinance', endpoint='.info[beta]', proxy=False))
-            _exp_na = (_is_oversea_etf or _is_private_etf) and not _e1.get('expense')
+            _exp_na = (_is_oversea_etf or _restricted) and not _e1.get('expense')
             rows.append(_row('ETF 費用率',
                              str(_dt_r.date.today()) if _e1.get('expense') else None, 'daily',
                              optional=False,
                              error_msg=(_oversea_msg if _is_oversea_etf
+                                        else _active_msg if _is_active_etf_main
                                         else _private_msg if _is_private_etf
                                         else _e1.get('_err_expense')),
                              probe_status=('na' if _exp_na else None),
-                             source='SITCA + MoneyDJ + yfinance 3 源',
-                             endpoint='sitca.org.tw IN2222_01 / moneydj Basic0004 / .info[expenseRatio]',
+                             source='SITCA + MoneyDJ + Yuanta + yfinance 4 源',
+                             endpoint='sitca.org.tw / moneydj Basic0004 / yuantaetfs / .info',
                              proxy=True))
             # NAV 淨值
             _prem = _e1.get('premium') or {}
             _nav_ok = _prem.get('nav') is not None
-            _nav_na = (_is_oversea_etf or _is_private_etf) and not _nav_ok
+            _nav_na = (_is_oversea_etf or _restricted) and not _nav_ok
             rows.append(_row('NAV 淨值',
                              str(_dt_r.date.today()) if _nav_ok else None, 'daily',
                              error_msg=(_oversea_msg if _is_oversea_etf
+                                        else _active_msg if _is_active_etf_main
                                         else _private_msg if _is_private_etf
                                         else _e1.get('_err_nav')),
                              probe_status=('na' if _nav_na else None),
@@ -1195,12 +1202,19 @@ def render_data_health_raw():
                                 proxy=True))
                         else:
                             _last_err = (st.session_state.get('_etf_manager_last_err') or {}).get(_tk_p)
-                            _err_str = f'多源全失敗 — {_last_err}' if _last_err else '多源全失敗（HTTP / regex / proxy 任一原因）'
+                            # v1.1：主動式 ETF Yuanta 也失敗 → 黃燈 na（公開資料受限）
+                            _err_str = (
+                                '主動式 ETF — 公開資料受限'
+                                f'（trace: {_last_err}）' if _last_err
+                                else '主動式 ETF — 公開資料受限'
+                            )
                             _probe_rows.append(_row(
                                 f'{_tk_p} 經理人',
                                 None, 'static',
+                                probe_status='na',
                                 error_msg=_err_str,
-                                source='MoneyDJ + SITCA', endpoint='Basic0001/0006/0011 + SITCA IN24XX',
+                                source='MoneyDJ + SITCA + Yuanta',
+                                endpoint='Basic0001/0006/0011 + SITCA IN24XX + yuantaetfs',
                                 proxy=True))
                     # 持股探測（簡版：有 / 無）
                     try:

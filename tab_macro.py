@@ -2006,6 +2006,83 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                     pivot_signals.append(('散戶極度悲觀（機會）','💡','#3fb950',
                         f'韭菜指數 {_leek_v:.1f}% < -20% → 散戶極度看空，底部拐點機會（反向指標）'))
 
+        # ── 6. 台灣領先指標拐點（景氣對策 / 領先指標 / 外資連續日數）─────
+        try:
+            from tw_macro import (
+                fetch_ndc_signal_history as _f_ndc_h,
+                fetch_ndc_leading_index as _f_ndc_li,
+                fetch_foreign_consecutive_days as _f_fi_streak,
+            )
+            _FMD_TK = st.secrets.get('FINMIND_TOKEN', '') \
+                if hasattr(st, 'secrets') else ''
+            _ndc_h = st.session_state.get('_ndc_hist_cache')
+            if _ndc_h is None:
+                _ndc_h = _f_ndc_h(months_back=12, token=_FMD_TK or '')
+                st.session_state['_ndc_hist_cache'] = _ndc_h
+            _ndc_li = st.session_state.get('_ndc_li_cache')
+            if _ndc_li is None:
+                _ndc_li = _f_ndc_li(months_back=18, token=_FMD_TK or '')
+                st.session_state['_ndc_li_cache'] = _ndc_li
+            _fi_st = st.session_state.get('_fi_streak_cache')
+            if _fi_st is None:
+                _fi_st = _f_fi_streak(days_back=30, token=_FMD_TK or '')
+                st.session_state['_fi_streak_cache'] = _fi_st
+
+            # 6-A 景氣對策信號拐點
+            _inf = (_ndc_h or {}).get('inflection', '')
+            _sc, _spv = (_ndc_h or {}).get('score_latest'), (_ndc_h or {}).get('score_prev')
+            if '翻多' in _inf:
+                pivot_signals.append(('景氣對策連2月翻多','🚀','#3fb950',
+                    f'分數 {_spv}→{_sc} 由跌轉升 → 景氣領先翻揚拐點'))
+            elif '翻空' in _inf:
+                pivot_signals.append(('景氣對策連2月翻空','⚠️','#f85149',
+                    f'分數 {_spv}→{_sc} 由升轉跌 → 景氣動能衰退拐點'))
+            elif '連3月上升' in _inf:
+                pivot_signals.append(('景氣對策連3月上升','✅','#3fb950',
+                    f'分數穩步上升至 {_sc}/45 → 景氣擴張持續'))
+            elif '連3月下降' in _inf:
+                pivot_signals.append(('景氣對策連3月下降','❌','#f85149',
+                    f'分數連續下滑至 {_sc}/45 → 景氣收縮持續'))
+
+            # 6-B 領先指標 6M smoothed change
+            _li_inf = (_ndc_li or {}).get('inflection', '')
+            _s6m = (_ndc_li or {}).get('smooth6m')
+            _ps6m = (_ndc_li or {}).get('prev_s6m')
+            if '由負轉正' in _li_inf and _s6m is not None and _ps6m is not None:
+                pivot_signals.append(('領先指標 6M 由負轉正','🚀','#3fb950',
+                    f'6M smoothed change：{_ps6m:+.2f}%→{_s6m:+.2f}% → 景氣翻揚黃金拐點'))
+            elif '由正轉負' in _li_inf and _s6m is not None and _ps6m is not None:
+                pivot_signals.append(('領先指標 6M 由正轉負','⚠️','#f85149',
+                    f'6M smoothed change：{_ps6m:+.2f}%→{_s6m:+.2f}% → 景氣轉折下行'))
+            elif '持續擴張' in _li_inf and _s6m is not None:
+                pivot_signals.append(('領先指標持續擴張','✅','#3fb950',
+                    f'6M smoothed change {_s6m:+.2f}% 維持正值 → 景氣擴張'))
+            elif '持續收縮' in _li_inf and _s6m is not None:
+                pivot_signals.append(('領先指標持續收縮','❌','#f85149',
+                    f'6M smoothed change {_s6m:+.2f}% 維持負值 → 景氣收縮'))
+
+            # 6-C 外資連續日數反轉
+            _fi_inf = (_fi_st or {}).get('inflection', '')
+            _cd = (_fi_st or {}).get('consec_days')
+            _ps = (_fi_st or {}).get('prev_streak')
+            if '賣→買' in _fi_inf:
+                pivot_signals.append(('外資由連賣轉買','🚀','#3fb950',
+                    f'外資連 {-_ps if _ps else 0} 賣後首日翻買 → 籌碼面拐點'))
+            elif '買→賣' in _fi_inf:
+                pivot_signals.append(('外資由連買轉賣','⚠️','#f85149',
+                    f'外資連 {_ps if _ps else 0} 買後首日翻賣 → 籌碼動能減弱'))
+            elif '連' in _fi_inf and '買超' in _fi_inf and _cd is not None:
+                pivot_signals.append(('外資連續買超','✅','#3fb950',
+                    f'外資已連 {_cd} 日買超 → 籌碼穩健'))
+            elif '連' in _fi_inf and '賣超' in _fi_inf and _cd is not None:
+                pivot_signals.append(('外資連續賣超','❌','#f85149',
+                    f'外資已連 {abs(_cd)} 日賣超 → 籌碼流出警示'))
+        except Exception as _e_tp6:
+            print(f'[tab_macro/拐點面板6] {type(_e_tp6).__name__}: {_e_tp6}')
+
+        # v1.2 暫存供 AI 首席總經分析師讀（章節：拐點訊號摘要）
+        st.session_state['_pivot_signals'] = list(pivot_signals)
+
         # ── 綜合評分 & 顯示 ──────────────────────────────────────
         _bull_pts = sum(1 for _,_,c,_ in pivot_signals if c == '#3fb950')
         _bear_pts = sum(1 for _,_,c,_ in pivot_signals if c == '#f85149')
@@ -2043,9 +2120,67 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
 
         # ── 熱錢深度監測（三角交叉：外資 × 匯率 × 背離偵測）─────────────
         # 拉到 expander 同層 sibling — Streamlit 禁止 expander 巢狀（原 #101 為 bug）
+        # ── v1.2 倒掛翻正後 ^TWII 6/12/18M 表現歷史回測 ────────────────
+        import os as _os_tw_bt
+        _fred_key_tw_bt = (_os_tw_bt.environ.get('FRED_API_KEY') or
+                            (st.secrets.get('FRED_API_KEY')
+                             if hasattr(st, 'secrets') else None) or '')
+        with st.expander(
+            '📊 歷史回測：美債倒掛翻正後 ^TWII 6/12/18M 表現',
+            expanded=False,
+        ):
+            try:
+                from tw_backtest import backtest_twii_turning_points as _bt_twii
+                _bt = _bt_twii(_fred_key_tw_bt)
+            except Exception as _bt_e:
+                _bt = {"source_ok": False, "note": str(_bt_e)[:120],
+                       "events": [], "summary": {"n_events": 0},
+                       "twii_series": None, "t10y2y_series": None}
+            if not _bt.get('source_ok'):
+                st.info(f"⚠️ FRED 或 ^TWII 抓取失敗，回測暫不可用。{_bt.get('note','')}")
+            elif _bt['summary']['n_events'] == 0:
+                st.info(f"近 30 年無符合條件之倒掛翻正事件（{_bt.get('note','')}）")
+            else:
+                _sm = _bt['summary']
+                _bk1, _bk2, _bk3, _bk4, _bk5 = st.columns(5)
+                _bk1.metric('事件數', f"{_sm['n_events']}",
+                             help=f"完整 18M 窗口：{_sm['n_complete_18m']}")
+                _bk2.metric('+6M 中位數',
+                             f"{_sm['median_6m']:+.1f}%" if _sm['median_6m'] is not None else '—',
+                             delta=f"勝率 {_sm['win_rate_6m']:.0f}%"
+                                    if _sm['win_rate_6m'] is not None else None)
+                _bk3.metric('+12M 中位數',
+                             f"{_sm['median_12m']:+.1f}%" if _sm['median_12m'] is not None else '—',
+                             delta=f"勝率 {_sm['win_rate_12m']:.0f}%"
+                                    if _sm['win_rate_12m'] is not None else None)
+                _bk4.metric('+18M 中位數',
+                             f"{_sm['median_18m']:+.1f}%" if _sm['median_18m'] is not None else '—',
+                             delta=f"勝率 {_sm['win_rate_18m']:.0f}%"
+                                    if _sm['win_rate_18m'] is not None else None)
+                _bk5.metric('資料涵蓋',
+                             f"{len(_bt['twii_series']):,} 日"
+                             if _bt['twii_series'] is not None else '—')
+                # 事件清單表
+                _ev_df = pd.DataFrame(_bt['events'])
+                if not _ev_df.empty:
+                    _ev_df['翻正日'] = pd.to_datetime(_ev_df['date']).dt.date
+                    _ev_df_disp = _ev_df[['翻正日', 't10y2y_min_pre',
+                                            'ret_6m', 'ret_12m', 'ret_18m']].rename(
+                        columns={'t10y2y_min_pre': '倒掛最深(%)',
+                                 'ret_6m':  '+6M (%)',
+                                 'ret_12m': '+12M (%)',
+                                 'ret_18m': '+18M (%)'})
+                    st.dataframe(_ev_df_disp, use_container_width=True,
+                                  hide_index=True, height=240)
+                st.caption(
+                    '💡 **解讀**：美債 10Y-2Y 倒掛翻正後 6~18 個月內，'
+                    '^TWII 歷史中位數正報酬率 = 底部累積期布局訊號；'
+                    '但台股與美股相關性 ~0.6，需搭配 NDC 景氣燈號雙重確認。'
+                )
+
         if _twd_df is not None and not _twd_df.empty:
             with st.expander("💵 熱錢深度監測 — 三角交叉（外資 × 匯率 × 背離）",
-                             expanded=False):
+                             expanded=True):
                 st.caption(
                     "上方「台幣升貶」訊號的深化版：把**外資買賣超**與**台幣匯率**"
                     "做交叉分析，找出「背離」時刻——例如台幣升值但外資沒買，"
@@ -3987,17 +4122,68 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                             _line += f'｜{_s_n[:120]}'
                         _v_news_lines.append(_line)
                 _v_news_str = '\n'.join(_v_news_lines) if _v_news_lines else '（無法取得新聞）'
+
+                # v1.2 新增章節（一）：熱錢動向（三角交叉）
+                _v_hot_money_ctx = '（無熱錢資料）'
+                try:
+                    # _twd_df 在 _mkt_info 區塊已抓；fallback 從 session_state
+                    _twd_df_ai = locals().get('_twd_df')
+                    if _twd_df_ai is None:
+                        _cl_ss = st.session_state.get('cl_data', {}) or {}
+                        _twd_df_ai = (_cl_ss.get('tw', {}) or {}).get('新台幣匯率')
+                    if _twd_df_ai is not None and not _twd_df_ai.empty:
+                        from hot_money import get_latest_hot_money_state
+                        _hm = get_latest_hot_money_state(
+                            _twd_df_ai, FINMIND_TOKEN or '')
+                        if _hm:
+                            _v_hot_money_ctx = (
+                                f'- 最新判讀（{_hm["date"]}）：**{_hm["state"]}**\n'
+                                f'- 解讀：{_hm["interpretation"][:120]}\n'
+                                f'- 最新外資買賣超：{_hm["foreign_net_yi"]:+.1f} 億\n'
+                                f'- 近5日累計外資：{_hm["roll_flow"]:+.0f} 億\n'
+                                f'- 最新 USD/TWD：{_hm["usdtwd"]:.3f}\n'
+                                f'- 近5日台幣升貶：{_hm["roll_apprec"]:+.2f}%（正=升值=熱錢流入）'
+                            )
+                except Exception as _hm_ai_e:
+                    print(f'[AI/hot_money] {type(_hm_ai_e).__name__}: {_hm_ai_e}')
+
+                # v1.2 新增章節（二）：拐點訊號摘要（六大面向綜合）
+                _v_pivot_ctx = '（拐點訊號尚未計算，請先載入總經拼圖）'
+                _pivot_sigs_ai = st.session_state.get('_pivot_signals') or []
+                if _pivot_sigs_ai:
+                    _pivot_lines = []
+                    _bull_n = _bear_n = _warn_n = 0
+                    for _lab, _ic, _co, _det in _pivot_sigs_ai:
+                        if _co == '#3fb950':
+                            _bull_n += 1
+                            _kind = '🟢 多頭'
+                        elif _co == '#f85149':
+                            _bear_n += 1
+                            _kind = '🔴 空頭'
+                        else:
+                            _warn_n += 1
+                            _kind = '🟡 觀察'
+                        _pivot_lines.append(f'- [{_kind}] {_lab}：{_det[:80]}')
+                    _v_pivot_ctx = (
+                        f'綜合：多頭 {_bull_n} 條 / 空頭 {_bear_n} 條 / 觀察 {_warn_n} 條\n'
+                        + '\n'.join(_pivot_lines)
+                    )
+
                 from ai_structured_summary import build_structured_summary_prompt
                 _sections_macro = [
                     {'name': '現在市場是偏多還偏空（系統幫你下的判斷）',
                      'data': _v_state_json},
                     {'name': '景氣、資金、利率這些關鍵數字現在長怎樣',
                      'data': _v_macro_ctx},
+                    {'name': '熱錢動向（三角交叉：外資 × 台幣匯率 × 背離）',
+                     'data': _v_hot_money_ctx},
+                    {'name': '拐點訊號（六大面向綜合判斷，偵測景氣反轉）',
+                     'data': _v_pivot_ctx},
                 ]
                 _macro_ai_prompt = build_structured_summary_prompt(
                     '台股大盤現在的狀況', _sections_macro, news_text=_v_news_str,
                     overall_question='現在大盤整體偏多還偏空、適不適合進場、最該留意什麼。')
-                _ai_rpt = gemini_call(_macro_ai_prompt, max_tokens=1800)
+                _ai_rpt = gemini_call(_macro_ai_prompt, max_tokens=2400)
                 _tz8 = datetime.timezone(datetime.timedelta(hours=8))
                 st.session_state['_macro_ai_report'] = _ai_rpt
                 st.session_state['_macro_ai_ts'] = datetime.datetime.now(_tz8).strftime('%Y-%m-%d %H:%M:%S')
