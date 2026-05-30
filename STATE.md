@@ -6,8 +6,8 @@
 - **產品**：台股 / ETF 多 Tab 投資儀表板（市場 / 個股 / 組合 / 總經 / ETF）
 - **技術棧**：Streamlit + pandas + Plotly + altair（<5）+ FinMind + yfinance + Gemini AI
 - **基建**：NAS Squid Proxy + FastAPI 中繼站（個股新聞）
-- **目前版本**：PR #116（AI 報告強制每節必出現 + token 上限 1800→2400）
-  - 沿革：#113 拐點偵測補強 → #114 主動式 ETF Yuanta fallback → #115 AI 報告補熱錢/拐點章節 + TWII 倒掛回測 → #116 prompt 強制 N 節全出 + 4 節 token 餘裕
+- **目前版本**：PR #117（ETF 補 MoneyDJ 追蹤指數 + 自算流動性警示）
+  - 沿革：#113 拐點偵測補強 → #114 主動式 ETF Yuanta fallback → #115 AI 報告補熱錢/拐點章節 + TWII 倒掛回測 → #116 prompt 強制 N 節全出 + 4 節 token 餘裕 → #117 etf_fetch.fetch_etf_underlying_index（MDJ Basic0001/0006/0007 + 3 層 regex + entity 預清洗）+ etf_calc.calc_avg_volume_20d / calc_liquidity_score（不換主源、不加新依賴）
 - **Secrets**：`FINMIND_TOKEN` · `GEMINI_API_KEY[_2..6]` · `PROXY_URL` · `FRED_API_KEY` ·（選配 `NAS_BASE_URL` / `NAS_API_KEY`）
 
 ## 模組分層（PR #58–#73 大重構後）
