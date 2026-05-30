@@ -671,28 +671,26 @@ border:2px solid #1f6feb;border-radius:14px;padding:16px;margin-bottom:14px;">
                         print(f'[FinMind-Inst] status={_ji.get("status")} rows={len(_ji.get("data",[]))}')
                         if _ji.get('status')==200 and _ji.get('data'):
                             _df_i = pd.DataFrame(_ji['data'])
-                            # [DEBUG-INST-FORMAT] FinMind 回 30 rows 但 parsing 完是 {} → 印出 columns + name 唯一值 + 第一筆 row
-                            print(f"[*] FinMind-Inst-debug [?] columns: {list(_df_i.columns)}")
-                            _name_col = 'name' if 'name' in _df_i.columns else None
-                            if _name_col:
-                                print(f"[*] FinMind-Inst-debug [?] unique names ({type(_df_i[_name_col].iloc[0]).__name__}): {repr(_df_i[_name_col].unique().tolist())[:300]}")
-                            else:
-                                print(f"[*] FinMind-Inst-debug [!] 'name' 欄缺，可能改用別的 key")
-                            print(f"[*] FinMind-Inst-debug [>] 第一筆 row: {repr(_df_i.iloc[0].to_dict())[:300]}")
                             _ld_i = _df_i['date'].max()
                             _df_i = _df_i[_df_i['date']==_ld_i]
                             _df_i['buy']  = pd.to_numeric(_df_i.get('buy',  0), errors='coerce').fillna(0)
                             _df_i['sell'] = pd.to_numeric(_df_i.get('sell', 0), errors='coerce').fillna(0)
                             _df_i['_net'] = ((_df_i['buy'] - _df_i['sell']) / 1e8).round(2)
+                            # FinMind name 欄為英文 key（Foreign_Investor / Investment_Trust / Dealer_*）
+                            # 與 tw_macro.py:151 / hot_money.py:157 一致採英文匹配，中文為向下相容
                             inst = {}
                             for _nm, _net in zip(_df_i['name'].astype(str), _df_i['_net']):
-                                if '外資' in _nm:
-                                    inst['外資及陸資'] = {'net': _net}
-                                elif '投信' in _nm:
+                                _nl = _nm.lower()
+                                if 'foreign' in _nl or '外資' in _nm:
+                                    inst.setdefault('_f', 0)
+                                    inst['_f'] = round(inst['_f'] + _net, 2)
+                                elif 'investment_trust' in _nl or '投信' in _nm:
                                     inst['投信'] = {'net': _net}
-                                elif '自營' in _nm:
+                                elif 'dealer' in _nl or '自營' in _nm:
                                     inst.setdefault('_d', 0)
                                     inst['_d'] = round(inst['_d'] + _net, 2)
+                            if '_f' in inst:
+                                inst['外資及陸資'] = {'net': inst.pop('_f')}
                             if '_d' in inst:
                                 inst['自營商'] = {'net': inst.pop('_d')}
                             inst_date = _ld_i
