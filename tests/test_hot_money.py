@@ -193,3 +193,30 @@ def test_twd_df_to_series_no_close_column_returns_empty():
     })
     out = _twd_df_to_series(df)
     assert out.empty
+
+
+# ────────────────────────────────────────────────────────────────────────
+# Regression smoke：altair / typing_extensions chain import 不能炸
+# （fund v18.240 同等預防性測試）
+# ────────────────────────────────────────────────────────────────────────
+def test_hot_money_module_imports_cleanly():
+    """整個 hot_money + render 函式 import 不應炸（TypedDict closed= 等）。"""
+    import importlib
+    import hot_money as _hm
+    importlib.reload(_hm)
+    assert callable(_hm.render_hot_money_section)
+    assert callable(_hm.build_signals)
+
+
+def test_altair_import_chain_does_not_raise():
+    """altair / narwhals 全鏈 import 不可拋 TypeError
+    （搶在 altair 5.5+ TypedDict closed= bug 重現前先測）。"""
+    try:
+        import altair  # noqa: F401
+    except TypeError as e:
+        if "closed" in str(e):
+            raise AssertionError(
+                "altair import 踩到 TypedDict closed= bug "
+                "(typing_extensions 太舊 / altair 版本不對？)"
+            ) from e
+        raise
