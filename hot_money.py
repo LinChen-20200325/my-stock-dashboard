@@ -168,6 +168,53 @@ def fetch_foreign_flow_series(days: int, token: str) -> tuple[pd.DataFrame, str]
 
 
 # ────────────────────────────────────────────────────────────────────────
+# v1.2 純資料層 helper：取最新熱錢狀態，無 streamlit 渲染（給 AI prompt 用）
+# ────────────────────────────────────────────────────────────────────────
+def get_latest_hot_money_state(twd_df: pd.DataFrame, token: str = "",
+                                days: int = 180, window: int = 5,
+                                flow_thr: float = 50.0,
+                                fx_thr: float = 0.5) -> dict | None:
+    """純資料層：取最新熱錢三角交叉判讀，不依賴 streamlit。
+
+    為什麼存在：tab_macro 的 AI 首席總經分析師 prompt 需要熱錢摘要，
+    但 `render_hot_money_section` 內含 st.markdown / st.spinner 等渲染，
+    無法直接複用。本 helper 抽出純計算邏輯。
+
+    Returns:
+        dict | None:
+            {
+              'state':           '溫和流出' / '同步流入' / ...,
+              'interpretation':  該 state 的白話解讀（截短）,
+              'foreign_net_yi':  最新外資買賣超（億元）,
+              'roll_flow':       近 window 日累計外資（億元）,
+              'usdtwd':          最新 USD/TWD,
+              'roll_apprec':     近 window 日台幣累計升貶（%）,
+              'date':            'YYYY-MM-DD',
+            }
+            twd_df / FinMind 失敗回 None。
+    """
+    fx_df = _twd_df_to_series(twd_df)
+    if fx_df.empty:
+        return None
+    flow_df, _err = fetch_foreign_flow_series(days, token)
+    if flow_df.empty:
+        return None
+    sig = build_signals(flow_df, fx_df, window, flow_thr, fx_thr)
+    if sig.empty:
+        return None
+    latest = sig.iloc[-1]
+    return {
+        'state':           str(latest['state']),
+        'interpretation':  str(latest.get('interpretation', '')),
+        'foreign_net_yi':  float(latest['foreign_net_yi']),
+        'roll_flow':       float(latest['roll_flow']),
+        'usdtwd':          float(latest['usdtwd']),
+        'roll_apprec':     float(latest['roll_apprec']),
+        'date':            str(pd.Timestamp(latest['date']).date()),
+    }
+
+
+# ────────────────────────────────────────────────────────────────────────
 # UI render：在 caller expander 內顯示完整三角交叉視圖
 # ────────────────────────────────────────────────────────────────────────
 def render_hot_money_section(twd_df: pd.DataFrame, token: str = "",
